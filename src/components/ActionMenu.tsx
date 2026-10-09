@@ -20,6 +20,8 @@ interface ActionMenuProps {
   /** Alineación del menú respecto del botón. Default "right" */
   align?: 'left' | 'right'
   className?: string
+  /** Solo el ícono ⋯, más chico (para acciones por fila de una lista). `label` queda como aria-label. */
+  compact?: boolean
 }
 
 /**
@@ -28,7 +30,7 @@ interface ActionMenuProps {
  * Pensado para descongestionar los toolbars de header en mobile: la acción principal
  * queda como botón aparte y todo lo secundario entra acá.
  */
-export function ActionMenu({ items, label = 'Acciones', align = 'right', className = '' }: ActionMenuProps) {
+export function ActionMenu({ items, label = 'Acciones', align = 'right', className = '', compact = false }: ActionMenuProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -57,17 +59,21 @@ export function ActionMenu({ items, label = 'Acciones', align = 'right', classNa
         onClick={() => setOpen(v => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+        aria-label={compact ? label : undefined}
+        title={compact ? label : undefined}
+        className={compact
+          ? `flex items-center justify-center w-9 h-9 rounded-lg border text-gray-500 dark:text-gray-400 transition-[background-color,transform] duration-150 active:scale-[0.97] ${open ? 'border-gray-300 dark:border-gray-500 bg-gray-100 dark:bg-gray-700' : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'}`
+          : 'flex items-center gap-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all'}
       >
         <MoreHorizontal size={16} />
-        <span className="hidden sm:inline">{label}</span>
-        <ChevronDown size={13} className={`hidden sm:inline transition-transform ${open ? 'rotate-180' : ''}`} />
+        {!compact && <span className="hidden sm:inline">{label}</span>}
+        {!compact && <ChevronDown size={13} className={`hidden sm:inline transition-transform ${open ? 'rotate-180' : ''}`} />}
       </button>
 
       {open && (
         <div
           role="menu"
-          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-full mt-1 min-w-[12rem] bg-surface border border-border-ds rounded-xl shadow-lg overflow-hidden z-30 py-1`}
+          className={`menu-pop absolute ${align === 'right' ? 'right-0 origin-top-right' : 'left-0 origin-top-left'} top-full mt-1 min-w-[12rem] bg-surface border border-border-ds rounded-xl shadow-lg overflow-hidden z-30 py-1`}
         >
           {visibles.map((item, idx) => {
             const Icon = item.icon

@@ -1420,7 +1420,7 @@ export default function RecepcionesPage() {
                       {it.tiene_vencimiento && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha vencimiento</label>
-                          <input type="date" value={it.fecha_vencimiento} onChange={e => updItem(it._key, { fecha_vencimiento: e.target.value })}
+                          <input type="date" max="9999-12-31" value={it.fecha_vencimiento} onChange={e => updItem(it._key, { fecha_vencimiento: e.target.value })}
                             className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600" />
                         </div>
                       )}

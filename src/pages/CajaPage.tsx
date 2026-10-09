@@ -260,7 +260,7 @@ export default function CajaPage() {
     queryKey: ['cajeros-tenant', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('users')
-        .select('id, nombre_display, email, rol')
+        .select('id, nombre_display, rol')
         .eq('tenant_id', tenant!.id)
         .in('rol', ['CAJERO','SUPERVISOR','DUEÑO'])
         .order('nombre_display')
@@ -736,7 +736,7 @@ export default function CajaPage() {
       // Notificar si hay diferencia
       if (difApertura !== null && difApertura !== 0) {
         const { data: supervisores } = await supabase.from('users')
-          .select('id, email, nombre_display')
+          .select('id, nombre_display')
           .eq('tenant_id', tenant!.id)
           .in('rol', ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'])
         if (supervisores?.length) {
@@ -753,12 +753,13 @@ export default function CajaPage() {
               action_url: '/caja',
             }))
           )
-          // Email fire-and-forget
-          supervisores.filter(s => s.email && s.id !== user?.id).forEach(s => {
+          // Email fire-and-forget. `users` no tiene mail: lo resuelve send-email por id (to_user_ids).
+          const idsMail = supervisores.filter(s => s.id !== user?.id).map(s => s.id)
+          if (idsMail.length) {
             supabase.functions.invoke('send-email', {
-              body: { type: 'notificacion', to: s.email, data: { titulo, mensaje, action_url: '/caja' } }
+              body: { type: 'notificacion', to_user_ids: idsMail, data: { titulo, mensaje, action_url: '/caja' } }
             }).catch(() => {})
-          })
+          }
         }
       }
       return difApertura
@@ -916,11 +917,10 @@ export default function CajaPage() {
 
         // Mail al DUEÑO (C2 — siempre)
         const { data: duenos } = await supabase.from('users')
-          .select('email, nombre_display').eq('tenant_id', tenant!.id).eq('rol', 'DUEÑO')
-        for (const d of (duenos ?? [])) {
-          if (!d.email) continue
+          .select('id').eq('tenant_id', tenant!.id).eq('rol', 'DUEÑO')
+        if (duenos?.length) {
           void supabase.functions.invoke('send-email', {
-            body: { type: 'notificacion', to: d.email, data: { titulo, mensaje: lineas, action_url: '/caja?tab=historial' } }
+            body: { type: 'notificacion', to_user_ids: duenos.map(d => d.id), data: { titulo, mensaje: lineas, action_url: '/caja?tab=historial' } }
           }).catch(() => {})
         }
 
@@ -936,7 +936,7 @@ export default function CajaPage() {
           const tituloDif = `⚠ Diferencia en cierre ${cajaActual?.nombre ?? 'caja'}: ${dif > 0 ? '+' : ''}${formatMonedaCaja(dif)}`
           const mensajeDif = `${user?.nombre_display ?? 'Un cajero'} cerró ${cajaActual?.nombre ?? 'la caja'} con ${dif > 0 ? 'sobrante' : 'faltante'} de ${formatMonedaCaja(Math.abs(dif))}. Saldo sistema: ${formatMonedaCaja(saldoActual)} · Conteo: ${formatMonedaCaja(montoRealNum)}.`
           const { data: destinatarios } = await supabase.from('users')
-            .select('id, email').eq('tenant_id', tenant!.id).in('rol', rolesAlerta)
+            .select('id').eq('tenant_id', tenant!.id).in('rol', rolesAlerta)
           if (destinatarios?.length) {
             // Canal in-app
             if (canales.includes('inapp')) {
@@ -951,10 +951,10 @@ export default function CajaPage() {
             }
             // Canal email
             if (canales.includes('email')) {
-              for (const d of destinatarios) {
-                if (!d.email || d.id === user?.id) continue
+              const idsMail = destinatarios.filter(d => d.id !== user?.id).map(d => d.id)
+              if (idsMail.length) {
                 void supabase.functions.invoke('send-email', {
-                  body: { type: 'notificacion', to: d.email, data: { titulo: tituloDif, mensaje: mensajeDif, action_url: '/caja?tab=historial' } }
+                  body: { type: 'notificacion', to_user_ids: idsMail, data: { titulo: tituloDif, mensaje: mensajeDif, action_url: '/caja?tab=historial' } }
                 }).catch(() => {})
               }
             }
@@ -1814,7 +1814,7 @@ export default function CajaPage() {
                           .filter((u: any) => u.id !== user?.id)
                           .filter((u: any) => !esCajaUsdActual || u.rol === 'DUEÑO' || ((tenant as any)?.caja_usd_roles_permitidos ?? []).includes(u.rol))
                           .map((u: any) => (
-                          <option key={u.id} value={u.id}>{u.nombre_display ?? u.email} ({u.rol})</option>
+                          <option key={u.id} value={u.id}>{u.nombre_display ?? 'Sin nombre'} ({u.rol})</option>
                         ))}
                       </select>
                       {aperturaParaUsuarioId && (

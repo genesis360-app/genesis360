@@ -252,6 +252,9 @@ PWA ya instalada siga abriendo la app.
   captura REAL del Panel → Ventas en vista móvil (`public/landing/panel-celular.webp`, 600×1298, componente `TelefonoPanel` en
   `LandingSecciones.tsx`), 15 % más chico que la primera versión para no tapar la tablet. En celular (< `sm`) el teléfono no se
   muestra: taparía la tablet. El hero ganó espacio abajo (`pb-48`/`lg:pb-52`) para que el ticket entre completo (medido en 6 anchos).
+- ✅ **2026-10-08 (🟡 DEV, va en v1.240.5): capturas REALES** de Almacén Jorgito (decisión de GO) en el hero (POS, ticket con la
+  misma venta, Panel → Insights) y en el bento de Módulos (LPN, Caja1, Factura C con CAE sin CUIT ni QR, cobro mixto). Herramienta
+  `tests/e2e/990_capturas_landing.spec.ts`. Lo de abajo queda como historia.
 - 🛑 **Pendiente (pedido de GO, "más adelante"):** usar **imágenes reales** de la app en toda la landing (hoy las piezas de las
   secciones son dibujos con datos de demo) y reemplazar las dos capturas del hero (Ventas en la tablet y Panel en el celular),
   que salen del negocio de prueba de DEV ("Almacén Jorgito", "Presupuestado 308 op. $0"). Hace falta un **negocio demo con datos

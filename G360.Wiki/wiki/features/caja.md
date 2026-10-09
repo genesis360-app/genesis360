@@ -8,6 +8,13 @@ updated: 2026-10-08
 
 # Módulo Caja
 
+> 🐛 **2026-10-08 (🟡 DEV, commit `d5b43d72`, va en v1.240.5; UAT §112):** `users` no tiene columna `email` (vive en `auth.users`)
+> y `CajaPage` la pedía en 4 selects → PostgREST 400 silencioso. Consecuencia: los avisos in-app y los mails de **diferencia de
+> apertura** y de **diferencia de cierre**, y el mail de cierre al DUEÑO, **nunca salieron**; "Abrir caja a nombre de" quedaba
+> vacío. Fix: se saca `email` de los selects y los mails van por `send-email` con `to_user_ids` (resuelto en el servidor: solo tipo
+> `notificacion`, usuarios activos del mismo tenant, excluye `@u.genesis360.pro`). Requiere desplegar `send-email` a PROD. Ver
+> [[wiki/architecture/edge-functions]].
+
 > 🏦 **2026-10-08 (✅ EN PROD v1.240.3, mig 479):** un pago con cheque deja un `egreso_informativo` que resta del saldo de la
 > cuenta asignada al medio Cheque (`vw_boveda_cuentas`). Si el cheque propio rebota o se anula, `revertir_cheque_propio` registra
 > un `ingreso_informativo` de hoy a la misma cuenta (sesión original si sigue abierta; si no, la de la Caja Fuerte de esa moneda).

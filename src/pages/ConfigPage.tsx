@@ -2183,6 +2183,13 @@ export default function ConfigPage() {
     setTenant(data)
     toast.success(nuevo ? 'Ya podés crear pedidos a mano' : 'Los pedidos se generan solo desde las ventas')
   }
+  const togglePedidoParcialDefault = async () => {
+    const nuevo = !(tenant as any)?.pedido_entrega_parcial_default
+    const { data, error } = await supabase.from('tenants').update({ pedido_entrega_parcial_default: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'Los pedidos nuevos aceptan entregas parciales por default' : 'Los pedidos se entregan completos por default')
+  }
   const togglePedidoCierreAutomatico = async () => {
     const nuevo = !(tenant as any)?.pedido_cierre_automatico
     const { data, error } = await supabase.from('tenants').update({ pedido_cierre_automatico: nuevo }).eq('id', tenant!.id).select().single()
@@ -2703,6 +2710,23 @@ export default function ConfigPage() {
       if (error) throw error
     },
     onSuccess: () => { toast.success('Método agregado'); setNuevoMetodo({ nombre: '', color: '#22c55e', moneda: 'ARS', es_efectivo: false }); qc.invalidateQueries({ queryKey: ['metodos_pago'] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // Un click para el caso del cartel de abajo: cobrar dólares en efectivo necesita un método en USD marcado como efectivo
+  // real (G5). No es un parche: es lo que hace que el POS pida los dólares, calcule el vuelto y mande el efectivo a la Caja
+  // USD. GO lo había borrado creyendo que la moneda del producto lo reemplazaba (2026-10-08).
+  const crearEfectivoUsd = useMutation({
+    mutationFn: async () => {
+      const yaExiste = (metodosPago as any[]).find(m => (m.nombre ?? '').trim().toLowerCase() === 'efectivo usd')
+      if (yaExiste) throw new Error('Ya tenés un método "Efectivo USD": editalo y poné moneda USD y "Es efectivo real".')
+      const { error } = await supabase.from('metodos_pago').insert({
+        tenant_id: tenant!.id, nombre: 'Efectivo USD', color: '#16a34a', activo: true, es_sistema: false,
+        moneda: 'USD', es_efectivo: true, orden: (metodosPago.length + 1),
+      })
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('"Efectivo USD" creado: el POS ya puede cobrar dólares en efectivo'); qc.invalidateQueries({ queryKey: ['metodos_pago'] }) },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -4853,7 +4877,7 @@ export default function ConfigPage() {
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500">
               Cuando una orden de TiendaNube o MercadoLibre vende un KIT y alcanza el stock de sus
-              componentes, se genera sola una tarea de armado en Pedidos → Tareas WMS (nunca arma en
+              componentes, se genera sola una tarea de armado en Picking → Tareas (nunca arma en
               silencio). Elegí a quién nace asignada esa tarea — si no elegís a nadie, queda sin
               asignar y la puede tomar cualquiera del depósito, igual que hoy con picking/reabastecimiento.
             </p>
@@ -6343,6 +6367,13 @@ export default function ConfigPage() {
                 <p className="text-xs text-gray-400 dark:text-gray-500">Si está habilitado, el pedido pasa solo a "Entregado" al completar todas sus líneas. Si lo desactivás, queda en "Entregado parcial" hasta que alguien lo cierre a mano.</p>
               </div>
             </label>
+            <label className="flex items-center gap-3 cursor-pointer py-1">
+              <Toggle checked={(tenant as any)?.pedido_entrega_parcial_default ?? false} onChange={togglePedidoParcialDefault} disabled={!canEdit} />
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Entregas parciales por default</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Apagado (recomendado): el pedido se entrega completo, con el picking terminado. Prendido: los pedidos nuevos aceptan entregar por partes lo que ya está pickeado. En cada pedido y al entregar se puede cambiar.</p>
+              </div>
+            </label>
           </div>
 
           {/* E3 — pedido_transiciones_roles: quién puede hacer cada transición */}
@@ -6725,11 +6756,18 @@ export default function ConfigPage() {
           {!loadingMetodos && !tieneMetodoUsdEfectivo && hayProductoUsd && (
             <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
               <AlertCircle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                Tenés productos en USD o que aceptan cualquier moneda, pero ningún método de pago está marcado como
-                "efectivo real" en USD. El POS no va a ofrecer cobrar en dólares físicos hasta que agregues uno abajo
-                (ej. "Efectivo USD", moneda USD, tildá "Es efectivo real").
-              </p>
+              <div className="flex-1 space-y-2">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Tenés productos en USD o que aceptan cualquier moneda, pero <strong>no podés cobrar dólares en efectivo</strong>:
+                  falta un método de pago en <strong>USD</strong> marcado como <strong>"Es efectivo real"</strong>. Es lo que hace que
+                  el punto de venta pida los dólares, calcule el vuelto y mande ese efectivo a la Caja USD — la moneda del producto
+                  solo define en qué moneda está el precio.
+                </p>
+                <button type="button" onClick={() => crearEfectivoUsd.mutate()} disabled={crearEfectivoUsd.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-60">
+                  <Plus size={13} /> {crearEfectivoUsd.isPending ? 'Creando…' : 'Crear "Efectivo USD"'}
+                </button>
+              </div>
             </div>
           )}
 

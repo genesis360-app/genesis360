@@ -14,6 +14,17 @@ PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kal
 
 ✅ **PROD = DEV** (001-475; deploy de v1.239.0 el 2026-10-06: PR **#371**, merge `85760295`; `pg_policies` DEV = PROD por schema). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
 
+## 🏢 v1.240.4 — Inventario por sucursal, CC de proveedores protegida, ubicaciones con stock (2026-10-08, EN PROD)
+
+- **Inventario y Productos siguen el selector de sucursal** (decisión de GO): Inventario muestra solo lo que tiene stock en la
+  sucursal (+ "Mostrar sin stock"); con "Todas", cada LPN dice su sucursal. Productos: catálogo completo, total de la sucursal.
+- **Mig 480:** la CC de proveedores solo se escribe por funciones (`registrar_nc_proveedor`); la devolución a proveedor ya no
+  ignora el error del crédito (REGLA #0). Cierre contable: una venta de un período cerrado se puede cobrar hoy.
+- **Mig 481:** una ubicación con stock no pasa a otra sucursal (caso El Tilo "Escobar-Leandro"); historial del cambio de
+  sucursal; aviso de borrado con producto, LPN y sucursal.
+- Ticket por mail con datos de la entrega (EF `send-email` en DEV y PROD).
+- PR **#382**, merge `a7ee65c6`, release `v1.240.4`. `pg_policies` DEV = PROD (public 245 · storage 40 · cron 2).
+
 ## 🧾 v1.240.3 — Envío en los tickets, cheques propios atómicos, OC por sucursal (2026-10-08, EN PROD)
 
 - **Tickets:** WhatsApp/link y mail incluyen el envío y el TOTAL cobrado; el ticket muestra transporte, n° de envío, fecha y

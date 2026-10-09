@@ -1,7 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
-  SOPORTE, UUID_RE, destinatariosSegunTipo, esc, rutaInterna, textoPlano, validarAdjuntos, type Llamador,
+  SOPORTE, UUID_RE, destinatariosSegunTipo, esMailEntregable, esc, rutaInterna, textoPlano, validarAdjuntos,
+  validarIdsUsuarios, type Llamador,
 } from './seguridad.ts'
 
 // 🛑 Seguridad (2026-09-15): hasta acá la EF no validaba quién llamaba. `verify_jwt` estaba activo, pero la clave anon
@@ -316,7 +317,26 @@ serve(async (req) => {
     const type = String(body.type ?? '')
     const data: Datos = body.data && typeof body.data === 'object' ? { ...body.data } : {}
 
-    const destinatarios = destinatariosSegunTipo(type, llamador, body.to, remitente?.email ?? null)
+    let destinatarios: { ok: true; valor: string[] } | { ok: false; status: number; error: string }
+    if (body.to_user_ids !== undefined) {
+      // Mail resuelto en el servidor: solo usuarios ACTIVOS del negocio de quien llama, y solo los que tienen
+      // una casilla real (los usuarios sin correo tienen una dirección interna que no recibe nada).
+      const ids = validarIdsUsuarios(type, llamador, body.to_user_ids)
+      if (!ids.ok) return respuesta({ error: ids.error }, ids.status)
+      const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+      const { data: filas, error: errFilas } = await admin.from('users')
+        .select('id').in('id', ids.valor).eq('tenant_id', remitente!.tenantId).neq('activo', false)
+      if (errFilas) throw new Error(errFilas.message)
+      const mails: string[] = []
+      for (const f of filas ?? []) {
+        const { data: u } = await admin.auth.admin.getUserById(f.id)
+        if (esMailEntregable(u?.user?.email)) mails.push(u!.user!.email!)
+      }
+      if (mails.length === 0) return respuesta({ ok: true, enviados: 0 })
+      destinatarios = { ok: true, valor: mails }
+    } else {
+      destinatarios = destinatariosSegunTipo(type, llamador, body.to, remitente?.email ?? null)
+    }
     if (!destinatarios.ok) return respuesta({ error: destinatarios.error }, destinatarios.status)
     const adjuntos = validarAdjuntos(body.attachments, llamador)
     if (!adjuntos.ok) return respuesta({ error: adjuntos.error }, adjuntos.status)

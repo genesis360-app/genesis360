@@ -94,7 +94,7 @@ const ENVIO_ESTADO_LABELS: Record<string, string> = {
 // Labels de pedidos.estado — copia liviana de ESTADO_BADGE en PedidosPage.tsx (no exportado),
 // solo para el badge de "Pedido #N" en el detalle de venta.
 const PEDIDO_ESTADO_LABELS: Record<string, string> = {
-  borrador: 'Borrador', confirmado: 'Confirmado', en_preparacion: 'En preparación',
+  borrador: 'Borrador', confirmado: 'Pendiente', en_preparacion: 'En preparación',
   listo_para_entrega: 'Listo para entrega', entregado: 'Entregado', entregado_parcial: 'Entrega parcial',
   cancelado: 'Cancelado',
 }
@@ -1611,15 +1611,17 @@ export default function VentasPage() {
   // ── Pestaña Pedidos (migs 315/316) — retiro en local listo para entregar en el mostrador ──
   // Solo pedidos LISTOS (picking terminado) y de RETIRO EN LOCAL: el que atiende tiene al cliente
   // enfrente, no le sirve ver pedidos a medio armar ni los que salen por envío.
-  // Sin filtro de sucursal explícito: la RLS de `pedidos` ya es por sucursal (mig 292).
+  // Filtra por la sucursal ACTIVA del selector: la RLS de `pedidos` (mig 292) solo acota a quien está
+  // atado a una sucursal; el DUEÑO y los roles con "ver todas" veían los retiros de todas y cambiar
+  // de sucursal no cambiaba nada (GO 2026-10-08). Con "Todas" elegida, `applyFilter` no filtra.
   const [pedidoBusqueda, setPedidoBusqueda] = useState('')
   const [entregandoPedido, setEntregandoPedido] = useState<string | null>(null)
   const { data: pedidosMostrador = [], isLoading: loadingPedidos } = useQuery({
     queryKey: ['pedidos-mostrador', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await supabase.from('pedidos')
+      const { data, error } = await applyFilter(supabase.from('pedidos')
         .select('id, numero, numero_sucursal, estado, requiere_envio, venta_origen_id, cliente_nombre, cliente_telefono, created_at, clientes(nombre, dni)')
-        .eq('tenant_id', tenant!.id)
+        .eq('tenant_id', tenant!.id))
         .eq('estado', 'listo_para_entrega')
         .eq('requiere_envio', false)
         .not('venta_origen_id', 'is', null)
@@ -1805,11 +1807,13 @@ export default function VentasPage() {
       const evIds = (evData ?? []).map((e: any) => e.id)
       const estadosFinal = estadosFiltro.length > 0 ? estadosFiltro.filter(id => evIds.includes(id)) : evIds
 
-      let lineasQuery = soloUbicado(
+      // 🛑 REGLA #0 — solo la sucursal activa (applyFilter), igual que la búsqueda y el registro de la venta. Sin esto el
+      // carrito ofrecía series/LPN de OTRA sucursal (Almacén de la Suerte, 08/10).
+      let lineasQuery = applyFilter(soloUbicado(
         supabase.from('inventario_lineas')
           .select('id, lpn, estado_id, ubicacion_id, ubicaciones(nombre, disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
           .eq('producto_id', p.id).eq('activo', true)
-      )
+      ))
 
       // En básico no se filtra por estado (el stock no tiene estado asignado — todo es vendible)
       if (modoAvanzado && estadosFinal.length > 0) {
@@ -1839,9 +1843,12 @@ export default function VentasPage() {
       const { data: evData2 } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
       const evIds2 = (evData2 ?? []).map((e: any) => e.id)
       const estadosFinal2 = estadosFiltro2.length > 0 ? estadosFiltro2.filter(id => evIds2.includes(id)) : evIds2
-      let lq = supabase.from('inventario_lineas')
+      // 🛑 REGLA #0 — solo la sucursal activa: de esta lista salen el LPN que se muestra en el carrito y el tope de cantidad.
+      // Sin el filtro, en Flores el tope eran las 20 u. de Saavedra (Almacén de la Suerte, 08/10). El registro de la venta
+      // siempre filtró por sucursal, así que nunca se descontó stock ajeno: el error era del carrito.
+      let lq = applyFilter(supabase.from('inventario_lineas')
         .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido), estados_inventario(nombre, descuento_pct)')
-        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
+        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0))
       if (modoAvanzado && estadosFinal2.length > 0) lq = lq.in('estado_id', estadosFinal2)
       const { data: lineasRaw2 } = await lq
       const hoyStr = new Date().toISOString().split('T')[0]

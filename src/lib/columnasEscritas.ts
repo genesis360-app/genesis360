@@ -115,3 +115,35 @@ export function escriturasEnFuente(src: string): EscrituraEncontrada[] {
   }
   return out
 }
+
+export interface LecturaEncontrada { tabla: string; columnas: string[]; linea: number }
+
+/**
+ * Columnas propias que lee un `.from('<tabla>').select('a, b, alias:c')` con el select LITERAL (sin `${}`).
+ * Los embeds (`otra(x)`), `*` y los conteos se saltean: solo se miran las columnas de la propia tabla.
+ * Por qué (2026-10-08): `users` no tiene `email` y 5 selects lo pedían → PostgREST da 400 y el `data` llega null:
+ * los avisos de diferencia de caja y el selector de cajeros nunca funcionaron.
+ */
+export function lecturasEnFuente(src: string): LecturaEncontrada[] {
+  const out: LecturaEncontrada[] = []
+  const re = /\.from\(\s*['"](\w+)['"]\s*\)\s*\.select\(\s*(?:'([^'\n]*)'|"([^"\n]*)"|`([^`$]*)`)/g
+  for (const m of src.matchAll(re)) {
+    const lista = m[2] ?? m[3] ?? m[4] ?? ''
+    const items: string[] = []
+    let nivel = 0, actual = ''
+    for (const ch of lista) {
+      if (ch === '(') nivel++
+      if (ch === ')') nivel--
+      if (ch === ',' && nivel === 0) { items.push(actual); actual = '' } else actual += ch
+    }
+    items.push(actual)
+    const columnas: string[] = []
+    for (let it of items.map(s => s.trim())) {
+      if (!it || it.includes('(') || it.includes('*')) continue
+      it = it.replace(/^\w+:(?!:)/, '').replace(/::\w+$/, '').replace(/->.*$/, '').trim()
+      if (/^[a-z_][a-z0-9_]*$/i.test(it)) columnas.push(it)
+    }
+    if (columnas.length) out.push({ tabla: m[1], columnas, linea: src.slice(0, m.index).split('\n').length })
+  }
+  return out
+}

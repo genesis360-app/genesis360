@@ -2411,6 +2411,94 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 📦 §113 — Pedidos rediseñado: tab Pedidos + Tareas WMS por pedido y por tarea, con acciones masivas (🟡 dev local) — 2026-10-08
+
+Pedido de GO: la página usa todo el ancho; una acción principal por fila; Tareas WMS se ve agrupada por pedido
+(estado y progreso del pedido) o tarea por tarea; selección con casilla por tarea y "todas" por pedido; asignar,
+completar y cancelar en masa; buscador por pedido, envío, venta, producto, SKU, LPN, ubicación, cliente y operario.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 113.1 | Tab Pedidos: columnas Pedido/Cliente/Entrega/Estado/Próximo paso; el "próximo paso" depende del estado (Confirmar → Lanzar → Ver en Picking → Entregar / Ver en Envíos / Entregar en mostrador); el resto (incluido Cancelar) en ⋯ | capturas desktop/mobile/dark · e2e `177` | ✅ |
+| 113.2 | Pedido con venta despachada/presupuesto: no ofrece "Lanzar" y dice por qué ("Venta ya despachada") | capturas | ✅ |
+| 113.3 | Filtros de estado con cantidad + "Entrega vencida"; el conteo es sobre lo buscado | capturas | ✅ |
+| 113.4 | Tareas WMS "Por pedido": pedido, cliente, estado, "X de Y hechas" y las tareas ya hechas tachadas; "Por tarea": lista plana con columna Pedido. La vista se recuerda | capturas | ✅ |
+| 113.5 | Casilla del pedido = todas sus tareas pendientes VISIBLES (respeta filtro/búsqueda), estado "algunas" si es parcial; en "Por tarea" la del encabezado = todas las visibles | captura (Pedido:139 → 1 tarea, tildado por el grupo) | ✅ |
+| 113.6 | 🛑 Completar en masa: de a una con la misma RPC que /picking, orden reabastecimiento → armado → picking; un picking cuyo reabastecimiento no está hecho ni tildado se saltea con aviso; si una falla se frena y dice cuál (lo hecho queda hecho) | prueba de GO en DEV 21:01: 5 tareas de 3 grupos completadas, pedidos #20 y #70 → listo_para_entrega, sin movimientos de stock (picking solo marca; la rebaja es al entregar) | ✅ |
+| 113.7 | Asignar en masa: un solo UPDATE por ids + log por tarea | prueba de GO en DEV (5 tareas → "deposito") | ✅ |
+| 113.8 | 🛑 Cancelar en masa: misma RPC que el botón; no mueve stock; armados liberan componentes; avisa los pickings que caen en cascada y que la reserva de un pedido ACTIVO no se libera (para eso, "Deshacer lanzamiento") | revisión de `fn_cancelar_tarea_wms` + texto de la confirmación | ✅ código · ⏳ probar |
+| 113.9 | Buscador: Pedido/Envío/Venta EXACTOS ("Pedido:7" no trae el 70); número suelto = ese pedido/envío/venta; texto en producto, SKU, LPN, ubicación, cliente, operario | unit `wmsTareasFiltro.test.ts` | ✅ |
+| 113.10 | 🛑 Pedido entregado con tareas vivas (mig 484): `fn_pedido_generar_venta` NO entrega con picking/reabastecimiento pendiente ("Falta completar el picking… (N tareas)"); el envío entregado (POD, nunca se bloquea) CONFIRMA los pickings pendientes y CANCELA los reabastecimientos; las colgadas existentes se confirmaron (DEV 44, PROD 0). Inventario OK: completar picking no mueve stock | SQL DEV (guard dispara en #139; 0 colgadas) · e2e `107` (nuevo caso: rechazo con picking pendiente) · `160`/`180` adaptados (completan el picking antes de entregar) | ✅ DEV · ⏳ PROD |
+| 113.11 | Ventas → Retiro filtra por la sucursal activa (antes el DUEÑO veía los de todas y cambiar de sucursal no cambiaba nada); "Todas" muestra todo | typecheck · revisión (`applyFilter`) · todos los pedidos de retiro tienen sucursal (DEV/PROD) | ✅ código · ⏳ probar |
+| 113.12 | 🛑 Entrega PARCIAL (mig 485, decisión de GO): por default el pedido se entrega COMPLETO (picking terminado y TODO lo pendiente; antes se podía cargar menos sin pedirlo). Parcial si se pide: tilde en el pedido (NULL = default del negocio, Config → Pedidos → "Entregas parciales por default") y en el modal de Entregar; en parcial sale solo lo pickeado por producto y las tareas de lo que falta siguen vivas. Sin tareas de picking del producto (modo básico) la parcial no tiene tope | e2e `107` (5 casos: completa rechaza con picking pendiente; completa con menos rechaza; parcial de lo no pickeado rechaza "se pickearon 0"; parcial de lo pickeado pasa → entregado_parcial con tareas vivas; segunda parcial sin pickeado rechaza) · migration-reviewer | ✅ DEV · ⏳ UI en dev local |
+| 113.13 | Picking unificado (GO): pestañas **Tareas** (la ex Pedidos → Tareas WMS: por pedido / por tarea, selección y acciones masivas, buscador) y **Picking** (la vista del operario con escáner). Pedidos ya no tiene la tab. "Ver en Picking" de un pedido abre Picking → Tareas con las DOS pestañas filtradas por ese pedido. La pestaña se recuerda; `?tab=` la fuerza | capturas (Pedido:139 filtra Tareas y Picking) · e2e `106`/`107` (con `?tab=picking`) | ✅ código · ⏳ revisión de GO |
+| 113.14 | 🛑 "Confirmado" se muestra **Pendiente** (pedido firme sin lanzar). Pedido de una venta que YA salió (despachada/facturada) nace **Listo para entrega** sin picking; una venta reservada que se despacha pasa su pedido no lanzado a Listo; datos corregidos (PROD: 4). Solo online o con envío (el mostrador presencial no genera pedido) (mig 486) | SQL DEV (0 confirmados con venta despachada) · e2e `113` (presupuesto → despachada → pedido listo; anular → cancelado) | ✅ DEV · ⏳ PROD |
+
+## 🔕 §112 — Lecturas de columnas inexistentes: avisos de caja, cajeros, etiqueta de courier y topes diarios (mig 483, 🟡 DEV) — 2026-10-08
+
+Encontrado en los logs del gateway de PROD al revocar las keys viejas. `users` no tiene `email` (vive en `auth.users`):
+5 selects lo pedían → 400 → `data` null, sin mirar el `error`. Además `clientes.documento`/`clientes.direccion` no existen
+y `fn_rate_limit_consumir` rechazaba ventanas de 1 día (fail-open → los topes diarios nunca rigieron).
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 112.1 | 🛑 Abrir caja con diferencia respecto al cierre anterior → notificación in-app a DUEÑO/SUPERVISOR/SUPER_USUARIO (menos quien abre) + mail | REST en DEV (el select viejo da 400, el nuevo 200) · probar en la app | ✅ consulta · ⏳ flujo |
+| 112.2 | 🛑 Cerrar caja con diferencia que supera el umbral → aviso in-app + mail a los roles configurados; mail de cierre al DUEÑO siempre | ídem | ✅ consulta · ⏳ flujo |
+| 112.3 | Caja → "Abrir a nombre de": el selector lista cajeros/supervisores/dueños (antes quedaba vacío) | REST en DEV (24 filas) | ✅ |
+| 112.4 | RRHH → vincular empleado con usuario: la lista carga (antes tiraba error) | typecheck · probar en la app | ⏳ |
+| 112.5 | `send-email` con `to_user_ids`: solo `notificacion` pedida por un usuario; solo usuarios ACTIVOS del mismo negocio; no manda a `@u.genesis360.pro` (usuarios sin correo) | unit `sendEmailSeguridad` · EF en DEV (id ajeno → `enviados: 0`; tipo `oc` → 400; id no-uuid → 400) | ✅ |
+| 112.6 | Etiqueta de courier: el destinatario sale con nombre/mail/teléfono y DNI (o CUIT) del cliente de la venta (antes "Cliente" vacío) | revisión + deploy DEV | ✅ código |
+| 112.7 | `data-api` clientes: exporta (`direccion` = domicilio fiscal); antes daba 400. ⚠ `updated_since` en clientes/proveedores sigue fallando: esas tablas no tienen `updated_at` (0 API keys en PROD) | revisión | ✅ código · ⏳ updated_since |
+| 112.8 | 🛑 Topes diarios: `consultar-cuit` 500/día por negocio y 5000/día plataforma, `categoria-cartel-ia` 200/día; ventana de 1 día alineada a 00:00 UTC; el cleanup guarda 2 días | SQL en DEV (`fn_rate_limit_consumir(…, 86400)` responde, cron con `2 days`) | ✅ |
+| 112.9 | Test estático: todo `.from(t).select('…')` literal se cruza contra `schema_full` (819 lecturas) | unit `columnasEscritas.test.ts` | ✅ |
+
+## 🌐 §111 — Picking multisucursal con ubicaciones GLOBALES (pedido de GO 2026-10-08, ⏳ A DEFINIR antes de implementar)
+
+Pedido de GO: si una ubicación Global tiene stock de varias sucursales y un pedido/venta de la sucursal A pide más de lo que A
+tiene, el stock de la ubicación Global (aunque esté cargado a la sucursal B) tiene que figurar disponible, se tiene que poder
+elegir de qué LPN de esa ubicación sacar, y el picking tiene que generar tareas visibles para cada sucursal.
+
+⚠️ **Choca con la regla vigente** "inventario por sucursal estricto" (GO 2026-05-23: vender/reservar/descontar solo de la sucursal
+activa) y con el fix de hoy (§110: el carrito toma solo la sucursal activa). Hoy cada LPN pertenece a UNA sucursal
+(`inventario_lineas.sucursal_id`) aunque esté en una ubicación Global. Preguntas para GO en `project_pendientes.md`.
+
+| # | Escenario (borrador, sujeto a las respuestas) | Estado |
+|---|---|---|
+| 111.1 | Venta en A de un producto con stock en A insuficiente + stock de B en una ubicación Global → el POS lo muestra disponible (separando "de A" y "de B en Global") | ⏳ definir |
+| 111.2 | El cajero elige el LPN de la ubicación Global del que sale la mercadería; el rebaje se registra con trazabilidad (qué sucursal era dueña y cuál vendió) | ⏳ definir |
+| 111.3 | 🛑 Stock por sucursal: vender de B desde A ¿mueve el stock de B a A (traslado implícito) o queda como venta de A con stock de B? Los reportes por sucursal tienen que cuadrar | ⏳ definir |
+| 111.4 | Pedido (reserva) de A con stock de B en Global → la reserva bloquea ese LPN; nadie más lo puede vender | ⏳ definir |
+| 111.5 | Tareas de picking del pedido: cada sucursal ve SUS tareas; la de sacar de la ubicación Global, ¿la ve A (que vende), B (dueña del stock) o las dos? | ⏳ definir |
+| 111.6 | Sin stock en Global ni en A → no se ofrece stock de B que esté en ubicaciones de B (no Globales) | ⏳ definir |
+
+## 🏢 §110 — El carrito toma el stock de la sucursal activa + vencimiento con año de 4 dígitos (mig 482, 🟡 DEV) — 2026-10-08
+
+Caso de GO (DEV, Almacén de la Suerte, SKU ALM-0022): vendiendo en Flores pedía 620 y el POS decía "máximo 20" — las 20 u. de
+Saavedra. Dos causas: (1) `agregarProducto` traía las líneas del producto de TODAS las sucursales (la búsqueda y el registro sí
+filtraban: nunca se descontó stock ajeno); (2) el LPN de 600 de Flores tenía vencimiento "20207-04-04" y la comparación como texto
+lo daba por vencido.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 110.1 | 🛑 El tope de cantidad y el LPN del carrito salen SOLO de la sucursal activa (con y sin series) | e2e `190` (Sur: tope = stock de Sur; sin el fix falla, verificado) | ✅ |
+| 110.2 | 🛑 La base rechaza un vencimiento con año de más de 4 dígitos (inventario_lineas, recepcion_items, traslado_items; NOT VALID) | SQL DEV (rollback) | ✅ |
+| 110.3 | Los campos de vencimiento (ingreso, LPN, masivo, recepción) no dejan escribir un año de 5 dígitos (`max="9999-12-31"`) | revisión | ✅ código |
+| 110.4 | ⏳ GO corrige en DEV los 2 LPN de Almacén de la Suerte con vencimiento fuera de rango (20207-04-04 y 5000-02-20) | — | ⏳ |
+
+## 💵 §109 — Cartel de "Efectivo USD" en Métodos de pago + landing con capturas reales (🟡 DEV) — 2026-10-08
+
+GO borró "Efectivo USD" y "Wallet USD" en Almacén Jorgito creyendo que la moneda del producto los reemplazaba, y apareció el
+cartel. El cartel era correcto: cobrar dólares en efectivo (G5) NECESITA un método en USD con "Es efectivo real" — es lo que hace
+que el POS pida los dólares, calcule el vuelto y mande el efectivo a la Caja USD. Sin él fallaban además los e2e 140, 149 y 157.
+GO los recreó.
+
+| # | Escenario | Cómo se verifica | Estado |
+|---|---|---|---|
+| 109.1 | Sin método USD efectivo y con productos en USD: el cartel explica que no se pueden cobrar dólares en efectivo y por qué (no es un parche) | e2e puntual con `page.route` (oculta los USD solo en el navegador) + captura | ✅ |
+| 109.2 | Botón "Crear 'Efectivo USD'": lo crea con moneda USD + efectivo real; si ya existe uno con ese nombre, avisa que lo edites (no duplica) | revisión (no se apretó: GO recreó los métodos a mano) | ✅ código · ⬜ click |
+| 109.3 | Con "Efectivo USD" recreado, los e2e 140/149/157 vuelven a pasar | e2e 140, 149, 157 | ✅ |
+| 109.4 | Landing: hero (POS, ticket $4.157, Panel → Insights) y bento (LPN, Caja1, Factura C con CAE sin CUIT ni QR, cobro mixto) con capturas reales de Almacén Jorgito | build + preview en el navegador | ✅ |
+
 ## 🏢 §108 — Productos e Inventario siguen el selector de sucursal (🟡 DEV) — 2026-10-08
 
 Decisión de GO: el selector del encabezado manda ("Todas" = todo; una sucursal = lo de esa sucursal), salvo el catálogo de

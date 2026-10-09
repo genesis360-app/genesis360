@@ -6,6 +6,67 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-08] update | 🐛 Columnas inexistentes que fallaban en silencio + topes diarios del rate limit (mig 483) + 🔑 keys de PROD rotadas (🟡 `dev`)
+
+- **🔑 Rotación de keys de PROD — HECHA** (config de Supabase, sin código): GO apagó las legacy API keys (anon + service_role) y
+  revocó la JWT signing key HS256 desde el dashboard; ES256 queda como Current. Login real OK (sesión e incógnito), 0 respuestas 401
+  en el gateway después. Pendiente: confirmar la revocación de HS256 en DEV y que el token `sbp_60df…` no exista.
+- **Commit `d5b43d72` (dev, sin deploy; va en v1.240.5):** `users` no tiene `email` (vive en `auth.users`) y 5 selects lo pedían
+  (CajaPage x4, RrhhPage x1) → 400 silencioso: los avisos y mails de diferencia de apertura/cierre de caja y el mail de cierre al
+  DUEÑO nunca salieron; "Abrir caja a nombre de" vacío; RRHH vincular usuario fallaba. Los mails ahora van por `send-email` con
+  `to_user_ids` (servidor: solo tipo `notificacion`, usuarios activos del mismo tenant, excluye `@u.genesis360.pro`).
+  `courier-api` pedía `clientes.documento` (etiqueta con destinatario "Cliente" sin datos); `data-api` pedía `clientes.direccion`
+  (export de clientes 400; ahora `direccion:domicilio_fiscal`; `updated_since` en clientes/proveedores sigue fallando: sin `updated_at`).
+  EFs desplegadas solo en DEV.
+- **Mig 483** (`483_rate_limit_ventana_diaria.sql`, DEV): `fn_rate_limit_consumir` aceptaba ventanas ≤ 3600 s; `consultar-cuit`
+  (500/día tenant, 5000/día plataforma) y `categoria-cartel-ia` (200/día) usaban 86400 → excepción → fail-open: los topes diarios
+  nunca se aplicaron. Ahora ≤ 86400; el cron de limpieza borra con margen de 2 días.
+- Test estático `lecturasEnFuente` (819 `.select()` literales contra `schema_full`). UAT §112.
+- **Deploy v1.240.5:** mig 482 y 483 a PROD antes del merge; desplegar EFs `send-email`, `courier-api`, `data-api` a PROD.
+
+## [2026-10-08] update | 🛑 Carrito del POS por sucursal + vencimiento de 4 dígitos (mig 482) + pendientes de GO (🟡 `dev`)
+
+- Caso de GO (DEV, Almacén de la Suerte, ALM-0022): en Flores el POS decía "máximo 20" con 600 en stock. Causas: `agregarProducto`
+  traía los LPN de TODAS las sucursales (el tope eran las 20 de Saavedra; el registro de la venta siempre filtró, nunca se descontó
+  stock ajeno) + el LPN de 600 con vencimiento "20207-04-04" (la comparación como texto lo daba por vencido). Fix + **mig 482**
+  (CHECK ≤ 9999-12-31 NOT VALID, aplicada solo en DEV) + `max` en inputs + e2e 190 (falla sin el fix). UAT §110.
+- GO pidió escenarios de **picking multisucursal con ubicaciones Globales** → UAT §111 en borrador: choca con "inventario por
+  sucursal estricto", 3 preguntas para GO. Pregunta de GO sobre **cambiar de sucursal con caja abierta**: el bloqueo es de pantalla
+  (L4); propuesta en pendientes.
+
+## [2026-10-08] update | 🖼️ Landing con capturas reales + cartel de "Efectivo USD" + plan de Multimoneda (🟡 `dev`)
+
+- **Landing (en `dev`):** hero con el POS real de Almacén Jorgito (Coca Cola 1.5L + Yerba, $4.157 — la Coca 2.5L a $600 se
+  reemplazó: no tiene stock vendible en Norte), ticket de la impresora con esa misma venta, Panel → Insights en el celular; bento
+  de módulos con recortes reales (LPN, Caja1 en vista celular, Factura C con CAE sin CUIT ni QR, cobro mixto). Herramienta
+  `tests/e2e/990_capturas_landing.spec.ts` (CAPTURAS_LANDING=1). Gotchas: el buscador del POS cierra la lista 150 ms después del
+  blur; el SW de la PWA cachea imágenes viejas en el preview.
+- **Config → Métodos de pago:** GO borró "Efectivo USD"/"Wallet USD" → cartel. Con el código actual el cartel era correcto (sin
+  ese medio no se cobran dólares y fallan los e2e 140/149/157); se mejoró el texto + botón "Crear 'Efectivo USD'". GO los recreó.
+- **Pero** el relevamiento de Multimoneda decidió que el medio de pago NO tiene moneda (selector de moneda en cada pago). Nunca se
+  implementó (pasos 3 y 7 del orden acordado quedaron sin arrancar; A-8 diferido el 25/09). Plan nuevo:
+  [[wiki/business/plan-multimoneda-medios-de-pago]], agendado para la semana del 12/10.
+
+## [2026-10-08] update | 🔑 Rotación de keys: inventario PROD OK + backup de Storage reparado
+
+- Inventario de consumidores de PROD: app y panel admin con `sb_publishable_`, cron/funciones sin keys, secret de GitHub nuevo;
+  logs del gateway (API nueva `analytics/endpoints/logs`, tabla `logs`) → 0 usos de keys legacy en 7 días. Apagado + revocación
+  de la HS256 quedan para el día siguiente (necesitan login real de GO; la revocación es irreversible).
+- 🔴 El backup diario de Storage de PROD fallaba desde el 07/10: el secret `SUPABASE_ACCESS_TOKEN` de GitHub tenía el token
+  vencido. Secret actualizado y backup manual OK (run 37737060184).
+
+## [2026-10-08] deploy | 🚀 v1.240.4 EN PROD — inventario por sucursal, CC de proveedores protegida, ubicaciones con stock
+
+- Migs **480** y **481** en PROD (versiones 20261008060719/24), verificadas: `registrar_nc_proveedor`, sin INSERT para
+  `authenticated` en `proveedor_cc_movimientos`, trigger de ubicaciones, cierre de ventas con columnas de cobro. EF `send-email`
+  en PROD. `pg_policies` DEV = PROD (public 245 · storage 40 · cron 2). PR **#382** merge `a7ee65c6`, release `v1.240.4`.
+- Inventario/Productos siguen el selector de sucursal (decisión de GO; alertas siguen por producto). 36 specs de Inventario
+  y Productos: 178 passed. e2e nuevos 189 (sucursal) y 141 adaptado (CC por función, sonda sin escribir).
+- El Tilo: la ubicación "Escobar-Leandro" tenía un LPN de la sucursal oficina (caso único en PROD). La 481 evita que se repita;
+  el dato lo corrige el cliente moviendo el LPN.
+- ⚠️ Error mío, sin daño: al crear `stockSucursal.ts` pisé un archivo existente con ese nombre; restaurado desde git antes de
+  commitear (el cálculo nuevo vive en `stockPorProducto.ts`).
+
 ## [2026-10-08] deploy | 🚀 v1.240.3 EN PROD — envío en tickets, cheques propios atómicos, OC por sucursal
 
 - Migs **477 → 478 → 479** aplicadas en PROD de a una (`aplicar-migracion.mjs`, versiones 20261008032850/55/900) y

@@ -2,7 +2,8 @@
 //  · Nada que la app no haga se anuncia (Ley 24.240). El asistente de WhatsApp NO se menciona hasta que Meta lo apruebe
 //    (decisión 5 de GO); la "IA" que se muestra es la que existe hoy: el Motor de Recomendaciones del Panel, el Asistente
 //    IA del encabezado y las Alertas.
-//  · Las "pantallas" son piezas dibujadas con datos de demo (un almacén cualquiera), copiando el lenguaje visual de la
+//  · Las piezas del bento de Módulos son recortes REALES de la app (DEV, Almacén Jorgito, 08/10 — pedido de GO; ver
+//    tests/e2e/990_capturas_landing.spec.ts). Las demás "pantallas" son piezas dibujadas con datos de demo, copiando el lenguaje visual de la
 //    app. Cuando exista un negocio demo prolijo se reemplazan por capturas reales (doc 02 §2).
 import { Link } from 'react-router-dom'
 import {
@@ -159,27 +160,9 @@ export function SeccionModulos() {
             <div className="flex items-center gap-2.5"><Boxes size={20} className="text-[#7B00FF]" /><h3 className="text-xl font-semibold tracking-tight">Inventario y depósito</h3></div>
             <p className="mt-2 text-zinc-600 max-w-[52ch]">Sabé qué tenés, dónde está y cuándo se vence, sin planillas.</p>
             <div className={pieza}>
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">Yerba mate 1 kg</span>
-                <span className="lp-num text-zinc-600">84 disponibles · 6 reservadas</span>
-              </div>
-              <div className="mt-3 overflow-hidden rounded-xl border border-zinc-200 bg-white text-[13px] lp-num">
-                <div className="hidden sm:grid grid-cols-[1.1fr_0.8fr_1fr_1fr_0.5fr] gap-3 border-b border-zinc-100 px-4 py-2 text-xs text-zinc-500">
-                  <span>Línea</span><span>Lote</span><span>Vence</span><span>Ubicación</span><span className="text-right">Cant.</span>
-                </div>
-                {[
-                  ['LPN-000214', '2405', '12/03/2027', 'Góndola A-3', '24'],
-                  ['LPN-000231', '2411', '02/05/2027', 'Depósito B-1', '60'],
-                ].map(f => (
-                  <div key={f[0]} className="grid grid-cols-2 sm:grid-cols-[1.1fr_0.8fr_1fr_1fr_0.5fr] gap-x-3 gap-y-1 px-4 py-2.5 border-b border-zinc-100 last:border-0">
-                    <span className="lp-mono text-zinc-800">{f[0]}</span>
-                    <span className="text-zinc-600"><span className="sm:hidden text-zinc-400">Lote </span>{f[1]}</span>
-                    <span className="text-zinc-600"><span className="sm:hidden text-zinc-400">Vence </span>{f[2]}</span>
-                    <span className="text-zinc-600">{f[3]}</span>
-                    <span className="sm:text-right font-medium">{f[4]} u.</span>
-                  </div>
-                ))}
-              </div>
+              <img src="/landing/bento-inventario.webp" width={1608} height={525} loading="lazy" decoding="async"
+                alt="Inventario de Genesis360: un producto con sus LPN, estado, ubicación, lote y vencimiento"
+                className="block h-auto w-full rounded-xl border border-zinc-200 bg-white" />
             </div>
           </article>
 
@@ -187,17 +170,10 @@ export function SeccionModulos() {
           <article className={`${tile} lg:col-span-2`} style={v(1)}>
             <div className="flex items-center gap-2.5"><Wallet size={20} className="text-[#7B00FF]" /><h3 className="text-xl font-semibold tracking-tight">Caja</h3></div>
             <p className="mt-2 text-zinc-600">Cada caja, cada turno, cada diferencia.</p>
-            <div className="mt-6 flex-1 rounded-2xl bg-[#0E0B16] p-4 text-white lp-num">
-              <p className="text-sm font-medium">Caja 1</p>
-              <p className="text-xs text-white/55">Abierta 08:02 · Turno mañana</p>
-              <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-white/60">Apertura</span><span>$20.000</span></div>
-                <div className="flex justify-between"><span className="text-white/60">Ingresos</span><span className="text-emerald-300">+$184.350</span></div>
-                <div className="flex justify-between"><span className="text-white/60">Egresos</span><span className="text-rose-300">−$12.000</span></div>
-              </div>
-              <div className="mt-4 flex items-baseline justify-between rounded-xl bg-white px-3 py-2.5 text-[#0D0D0D]">
-                <span className="text-xs text-[#5B2BFF]">Saldo actual</span><span className="text-lg font-semibold">$192.350</span>
-              </div>
+            <div className="mt-6 flex flex-1 items-center rounded-2xl bg-[#F5F3FA] p-3 sm:p-4">
+              <img src="/landing/bento-caja.webp" width={920} height={580} loading="lazy" decoding="async"
+                alt="Caja abierta en Genesis360: apertura, ingresos, egresos y saldo actual"
+                className="block h-auto w-full rounded-xl" />
             </div>
           </article>
 
@@ -205,17 +181,10 @@ export function SeccionModulos() {
           <article className={`${tile} lg:col-span-3`} style={v(2)}>
             <div className="flex items-center gap-2.5"><Receipt size={20} className="text-[#7B00FF]" /><h3 className="text-xl font-semibold tracking-tight">Facturación electrónica</h3></div>
             <p className="mt-2 text-zinc-600">Facturá en segundos ante ARCA (ex AFIP), sin salir del sistema.</p>
-            <div className={`${pieza} lp-num`}>
-              <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">Factura B</p>
-                    <p className="lp-mono text-xs text-zinc-500">0003-00000412</p>
-                  </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700"><Check size={12} />CAE otorgado</span>
-                </div>
-                <div className="mt-3 flex justify-between border-t border-zinc-100 pt-3"><span className="text-zinc-600">Consumidor final</span><span className="font-semibold">$11.250</span></div>
-              </div>
+            <div className={pieza}>
+              <img src="/landing/bento-factura.webp" width={1200} height={722} loading="lazy" decoding="async"
+                alt="Factura C electrónica emitida desde Genesis360, con su número y CAE"
+                className="block h-auto w-full rounded-xl border border-zinc-200 bg-white" />
             </div>
           </article>
 
@@ -223,10 +192,10 @@ export function SeccionModulos() {
           <article className={`${tile} lg:col-span-3`} style={v(3)}>
             <div className="flex items-center gap-2.5"><ShoppingCart size={20} className="text-[#7B00FF]" /><h3 className="text-xl font-semibold tracking-tight">Ventas y punto de venta</h3></div>
             <p className="mt-2 text-zinc-600">Cobrá con cualquier medio de pago, en el momento, desde cualquier sucursal.</p>
-            <div className={`${pieza} flex flex-wrap gap-2`}>
-              {['Efectivo', 'Débito', 'Crédito', 'Transferencia', 'QR', 'Cuenta corriente'].map(m => (
-                <span key={m} className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700">{m}</span>
-              ))}
+            <div className={`${pieza} flex justify-center`}>
+              <img src="/landing/bento-cobro.webp" width={724} height={444} loading="lazy" decoding="async"
+                alt="Cobro en el punto de venta de Genesis360 con dos medios de pago: efectivo y transferencia"
+                className="block h-auto w-full max-w-[22rem] rounded-xl border border-zinc-200 bg-white" />
             </div>
           </article>
 
@@ -515,15 +484,15 @@ export function SeccionFundadores() {
 }
 
 /* ── Hero · celular con el Panel (pedido de GO 2026-10-07) ────────────────────────────────────────────────────────────
-   Captura REAL del Panel en vista de celular (Panel → Ventas: embudo de la venta y canales), tomada de la app en DEV
-   (`public/landing/panel-celular.webp`, 600×1298). Los números son del negocio de prueba: reemplazar por una captura del
-   negocio demo cuando exista (pendiente en wiki/business/plan-landing-2.md). */
+   Captura REAL del Panel en vista de celular (Panel → Ventas → Insights: lo que detectó Genesis360), tomada de la app en DEV
+   (Almacén Jorgito, Sucursal Norte, 08/10 — elegido por GO) con `tests/e2e/990_capturas_landing.spec.ts`
+   (`public/landing/panel-celular.webp`, 600×1298). */
 export function TelefonoPanel() {
   return (
     <div className="rounded-[2.1rem] bg-gradient-to-b from-[#26262c] to-[#121216] p-[6px] shadow-[0_30px_60px_-24px_rgba(40,10,90,0.55),inset_0_0_0_1px_rgba(255,255,255,0.08)]">
       <div className="relative overflow-hidden rounded-[1.7rem] bg-white">
         <img src="/landing/panel-celular.webp" width={600} height={1298} loading="lazy" decoding="async"
-          alt="Panel de Genesis360 en el celular: el camino de la venta y por dónde compran los clientes"
+          alt="Panel de Genesis360 en el celular: lo que detectó en las ventas, como el crecimiento y lo pendiente de cobro"
           className="block h-auto w-full" />
         {/* Isla del teléfono sobre la captura */}
         <span aria-hidden className="absolute left-1/2 top-[7px] h-[15px] w-[52px] -translate-x-1/2 rounded-full bg-[#121216]" />

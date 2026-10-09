@@ -799,7 +799,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                     Fecha de vencimiento <span className="text-red-500">*</span>
                   </label>
-                  <input type="date" value={editForm.fecha_vencimiento} onChange={e => setEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
+                  <input type="date" max="9999-12-31" value={editForm.fecha_vencimiento} onChange={e => setEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
                     className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent-text
                       ${!editForm.fecha_vencimiento ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                 </div>

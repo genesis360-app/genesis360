@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-08T05:20:50.838Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261008052015 · 178 tablas
+-- Generado 2026-10-08T23:00:20.470Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261008230013 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1518,7 +1518,8 @@ CREATE TABLE public.pedidos (
   cancelado_at timestamp with time zone,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   referencia text,
-  venta_origen_id uuid
+  venta_origen_id uuid,
+  acepta_entrega_parcial boolean
 );
 
 CREATE TABLE public.platform_billers (
@@ -2596,7 +2597,8 @@ CREATE TABLE public.tenants (
   precio_programado_aviso_demora_horas integer NOT NULL DEFAULT 2,
   categorias_cliente_roles jsonb NOT NULL DEFAULT '[]'::jsonb,
   categorias_cliente_asignar_roles jsonb NOT NULL DEFAULT '[]'::jsonb,
-  descuento_tope_acumulado_pct numeric(5,2)
+  descuento_tope_acumulado_pct numeric(5,2),
+  pedido_entrega_parcial_default boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -3156,6 +3158,7 @@ ALTER TABLE public.inventario_lineas ADD CONSTRAINT chk_cantidad_mayor_o_igual_r
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT chk_cantidad_no_negativa CHECK ((cantidad >= 0));
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT chk_cantidad_reservada_no_negativa CHECK ((cantidad_reservada >= 0));
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_cantidad_uom_check CHECK (((cantidad_uom IS NULL) OR (cantidad_uom > (0)::numeric)));
+ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_fecha_vencimiento_anio_check CHECK (((fecha_vencimiento IS NULL) OR (fecha_vencimiento <= '9999-12-31'::date))) NOT VALID;
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_pkey PRIMARY KEY (id);
 ALTER TABLE public.inventario_meli_map ADD CONSTRAINT inventario_meli_map_pkey PRIMARY KEY (id);
 ALTER TABLE public.inventario_meli_map ADD CONSTRAINT inventario_meli_map_tenant_id_producto_id_meli_item_id_key UNIQUE (tenant_id, producto_id, meli_item_id);
@@ -3283,6 +3286,7 @@ ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_tenant_id_id_key UNIQU
 ALTER TABLE public.proveedores ADD CONSTRAINT proveedores_tipo_check CHECK ((tipo = ANY (ARRAY['proveedor'::text, 'servicio'::text])));
 ALTER TABLE public.puntos_venta_afip ADD CONSTRAINT puntos_venta_afip_pkey PRIMARY KEY (id);
 ALTER TABLE public.rate_limit_contadores ADD CONSTRAINT rate_limit_contadores_pkey PRIMARY KEY (bucket, identidad, ventana_inicio);
+ALTER TABLE public.recepcion_items ADD CONSTRAINT recepcion_items_fecha_vencimiento_anio_check CHECK (((fecha_vencimiento IS NULL) OR (fecha_vencimiento <= '9999-12-31'::date))) NOT VALID;
 ALTER TABLE public.recepcion_items ADD CONSTRAINT recepcion_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_estado_check CHECK ((estado = ANY (ARRAY['borrador'::text, 'confirmada'::text, 'cancelada'::text])));
 ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_pkey PRIMARY KEY (id);
@@ -3385,6 +3389,7 @@ ALTER TABLE public.tipos_pedido ADD CONSTRAINT tipos_pedido_factura_momento_chec
 ALTER TABLE public.tipos_pedido ADD CONSTRAINT tipos_pedido_pkey PRIMARY KEY (id);
 ALTER TABLE public.tipos_pedido ADD CONSTRAINT tipos_pedido_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_cantidad_check CHECK ((cantidad > (0)::numeric));
+ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_fecha_vencimiento_anio_check CHECK (((fecha_vencimiento IS NULL) OR (fecha_vencimiento <= '9999-12-31'::date))) NOT VALID;
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_check CHECK ((sucursal_origen_id <> sucursal_destino_id));
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_estado_check CHECK ((estado = ANY (ARRAY['en_transito'::text, 'recibido'::text, 'recibido_parcial'::text, 'cancelado'::text])));
@@ -9955,20 +9960,26 @@ CREATE OR REPLACE FUNCTION public.fn_pedido_crear_desde_venta(p_venta_id uuid, p
  SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-DECLARE v_venta RECORD; v_tipo_id uuid; v_pedido_id uuid;
+DECLARE
+  v_venta    RECORD;
+  v_tipo_id  uuid;
+  v_pedido_id uuid;
 BEGIN
   IF EXISTS (SELECT 1 FROM pedidos WHERE venta_origen_id = p_venta_id) THEN RETURN NULL; END IF;
   IF NOT fn_venta_requiere_pedido(p_venta_id, p_con_envio) THEN RETURN NULL; END IF;
 
   SELECT * INTO v_venta FROM ventas WHERE id = p_venta_id;
 
+  -- Tipo de pedido: se prefiere el que matchea el destino ("Retiro en local" / "E-commerce"), y si
+  -- el tenant los borró/renombró se cae al primer tipo activo (tipo_pedido_id es NOT NULL).
   SELECT id INTO v_tipo_id FROM tipos_pedido
   WHERE tenant_id = v_venta.tenant_id AND activo = true
     AND lower(nombre) = CASE WHEN p_con_envio THEN 'e-commerce' ELSE 'retiro en local' END
   LIMIT 1;
   IF v_tipo_id IS NULL THEN
     SELECT id INTO v_tipo_id FROM tipos_pedido
-    WHERE tenant_id = v_venta.tenant_id AND activo = true ORDER BY orden NULLS LAST, nombre LIMIT 1;
+    WHERE tenant_id = v_venta.tenant_id AND activo = true
+    ORDER BY orden NULLS LAST, nombre LIMIT 1;
   END IF;
   IF v_tipo_id IS NULL THEN RETURN NULL; END IF;
 
@@ -9979,15 +9990,22 @@ BEGIN
     v_venta.tenant_id, v_venta.sucursal_id, v_tipo_id, v_venta.cliente_id,
     CASE WHEN v_venta.cliente_id IS NULL THEN v_venta.cliente_nombre END,
     CASE WHEN v_venta.cliente_id IS NULL THEN v_venta.cliente_telefono END,
-    'confirmado', p_con_envio, v_venta.usuario_id, now(), p_venta_id,
+    -- (mig 486, decisión de GO) Si la venta YA salió (despachada/facturada: el stock se rebajó con la
+    -- venta), no hay nada que pickear: el pedido nace "listo para entrega" y no se generan tareas.
+    -- Si la venta es una reserva, nace "pendiente" (confirmado) y espera que lo lancen.
+    CASE WHEN v_venta.estado IN ('despachada', 'facturada') THEN 'listo_para_entrega' ELSE 'confirmado' END,
+    p_con_envio, v_venta.usuario_id, now(), p_venta_id,
     'Generado automáticamente desde la venta #' || COALESCE(v_venta.numero::text, '?')
   )
   ON CONFLICT (venta_origen_id) WHERE venta_origen_id IS NOT NULL DO NOTHING
   RETURNING id INTO v_pedido_id;
 
-  IF v_pedido_id IS NOT NULL THEN PERFORM fn_pedido_sync_items_desde_venta(v_pedido_id); END IF;
+  IF v_pedido_id IS NOT NULL THEN
+    PERFORM fn_pedido_sync_items_desde_venta(v_pedido_id);
+  END IF;
   RETURN v_pedido_id;
-END; $function$
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_pedido_deslanzar(p_pedido_id uuid)
@@ -10069,7 +10087,7 @@ BEGIN
 END; $function$
 
 
-CREATE OR REPLACE FUNCTION public.fn_pedido_generar_venta(p_pedido_id uuid, p_sesion_caja_id uuid, p_medio_pago jsonb, p_entregas jsonb DEFAULT NULL::jsonb, p_idempotency_key uuid DEFAULT NULL::uuid)
+CREATE OR REPLACE FUNCTION public.fn_pedido_generar_venta(p_pedido_id uuid, p_sesion_caja_id uuid, p_medio_pago jsonb, p_entregas jsonb DEFAULT NULL::jsonb, p_idempotency_key uuid DEFAULT NULL::uuid, p_permitir_parcial boolean DEFAULT NULL::boolean)
  RETURNS uuid
  LANGUAGE plpgsql
  SET search_path TO 'public'
@@ -10113,6 +10131,10 @@ DECLARE
   v_enforcement_pol  text;
   v_motor            jsonb;
   v_desc_u           numeric;
+  v_parcial          boolean;
+  v_hay_picking      boolean;
+  v_pickeado         numeric;
+  v_entregado_prod   numeric;
 BEGIN
   SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
   IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
@@ -10125,6 +10147,25 @@ BEGIN
 
   IF v_pedido.estado NOT IN ('en_preparacion', 'listo_para_entrega', 'entregado_parcial') THEN
     RAISE EXCEPTION 'El pedido tiene que estar lanzado (en preparación, listo para entrega, o entregado parcial) para generar la venta';
+  END IF;
+
+  -- (mig 485) ENTREGA PARCIAL — decisión de GO 2026-10-08: por default un pedido se entrega COMPLETO;
+  -- parcial solo si se pide. Se pide en el pedido (`acepta_entrega_parcial`, NULL = hereda el default del
+  -- negocio) y se puede cambiar al entregar (`p_permitir_parcial`). En una parcial sale SOLO lo pickeado.
+  v_parcial := COALESCE(p_permitir_parcial, v_pedido.acepta_entrega_parcial,
+                        (SELECT t.pedido_entrega_parcial_default FROM tenants t WHERE t.id = v_pedido.tenant_id),
+                        false);
+
+  -- (mig 484) Entrega completa con el picking a medio hacer: no. La mercadería que no se pickeó no salió
+  -- del depósito, y entregando igual las tareas quedaban vivas en la cola (trabajo fantasma).
+  -- Va DESPUÉS de la idempotencia: un reintento de una entrega ya hecha devuelve su venta.
+  IF NOT v_parcial AND EXISTS (SELECT 1 FROM wms_tareas
+             WHERE pedido_id = p_pedido_id AND tipo IN ('picking', 'replenishment')
+               AND estado IN ('pendiente', 'en_curso')) THEN
+    RAISE EXCEPTION 'Falta completar el picking de este pedido (% tarea(s) pendientes en Depósito). Completalas (o cancelá las que no correspondan) en Picking → Tareas. Si el cliente pidió llevarse solo lo que ya está listo, marcá "Entrega parcial".',
+      (SELECT count(*) FROM wms_tareas
+        WHERE pedido_id = p_pedido_id AND tipo IN ('picking', 'replenishment')
+          AND estado IN ('pendiente', 'en_curso'));
   END IF;
 
   SELECT * INTO v_sesion FROM caja_sesiones WHERE id = p_sesion_caja_id FOR UPDATE;
@@ -10181,9 +10222,36 @@ BEGIN
       END IF;
     END IF;
 
+    -- (mig 485) Entrega completa: cada línea sale con todo lo que le falta.
+    IF NOT v_parcial AND COALESCE(v_cant_entregar, 0) < v_item.pendiente THEN
+      RAISE EXCEPTION 'Este pedido se entrega completo: de % faltan % y se cargaron %. Si el cliente pidió una entrega parcial, marcá "Entrega parcial".',
+        (SELECT nombre FROM productos WHERE id = v_item.producto_id), v_item.pendiente, COALESCE(v_cant_entregar, 0);
+    END IF;
+
     IF v_cant_entregar IS NULL OR v_cant_entregar <= 0 THEN
       IF v_item.pendiente > 0 THEN v_todo_entregado := false; END IF;
       CONTINUE;
+    END IF;
+
+    -- (mig 485) Entrega parcial: no sale más de lo pickeado del producto (si el pedido tiene picking de
+    -- ese producto). `cantidad_entregada` ya incluye lo de las líneas anteriores de ESTA entrega (se
+    -- actualiza dentro del loop), así que dos líneas del mismo producto no se pasan juntas.
+    IF v_parcial THEN
+      SELECT EXISTS (SELECT 1 FROM wms_tareas
+                      WHERE pedido_id = p_pedido_id AND producto_id = v_item.producto_id
+                        AND tipo = 'picking' AND estado <> 'cancelada') INTO v_hay_picking;
+      IF v_hay_picking THEN
+        SELECT COALESCE(SUM(cantidad), 0) INTO v_pickeado FROM wms_tareas
+         WHERE pedido_id = p_pedido_id AND producto_id = v_item.producto_id
+           AND tipo = 'picking' AND estado = 'completada';
+        SELECT COALESCE(SUM(cantidad_entregada), 0) INTO v_entregado_prod FROM pedido_items
+         WHERE pedido_id = p_pedido_id AND producto_id = v_item.producto_id AND estado <> 'cancelada';
+        IF v_entregado_prod + v_cant_entregar > v_pickeado THEN
+          RAISE EXCEPTION 'De % se pickearon % y ya se entregaron %: en esta entrega podés llevar hasta %.',
+            (SELECT nombre FROM productos WHERE id = v_item.producto_id), v_pickeado, v_entregado_prod,
+            GREATEST(v_pickeado - v_entregado_prod, 0);
+        END IF;
+      END IF;
     END IF;
 
     SELECT nombre, sku, precio_venta, precio_costo, alicuota_iva INTO v_producto
@@ -11261,11 +11329,11 @@ BEGIN
   IF p_limite IS NULL OR p_limite < 1 THEN
     RAISE EXCEPTION 'limite inválido: %', p_limite;
   END IF;
-  -- Tope de 1 hora, atado al margen del cron de limpieza (punto 3): si se permitieran ventanas más
-  -- largas, el cleanup borraría el contador de una ventana TODAVÍA ABIERTA y el límite se
-  -- reiniciaría solo, en silencio. Esto es rate limiting de borde, no cuotas diarias.
-  IF p_ventana_seg IS NULL OR p_ventana_seg < 1 OR p_ventana_seg > 3600 THEN
-    RAISE EXCEPTION 'ventana inválida: % segundos (máximo 3600)', p_ventana_seg;
+  -- Tope de 1 día, atado al margen del cron de limpieza (2 días, mig 483): si se permitieran
+  -- ventanas más largas, el cleanup borraría el contador de una ventana TODAVÍA ABIERTA y el
+  -- límite se reiniciaría solo, en silencio.
+  IF p_ventana_seg IS NULL OR p_ventana_seg < 1 OR p_ventana_seg > 86400 THEN
+    RAISE EXCEPTION 'ventana inválida: % segundos (máximo 86400)', p_ventana_seg;
   END IF;
 
   -- La identidad viene de un header: se recorta para que nadie infle la fila mandando 8 KB de
@@ -14179,67 +14247,6 @@ BEGIN
 END $function$
 
 
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -14314,6 +14321,67 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -15734,6 +15802,28 @@ BEGIN
   -- No pisa un pedido ya `entregado` (idempotente) ni uno `cancelado` (la mercadería no debería
   -- haber salido, pero si el dato real dice que se entregó no lo forzamos a un estado inconsistente
   -- con silencio — queda tal cual para revisión manual, no es un caso que deba bloquear el POD).
+  -- (mig 484) El envío entregado prueba que la mercadería salió: las tareas de picking que quedaron
+  -- pendientes se CONFIRMAN (decisión de GO; completar un picking solo cambia su estado, no mueve
+  -- stock) y los reabastecimientos pendientes se CANCELAN (confirmarlos registraría un movimiento de
+  -- stock entre ubicaciones que nunca pasó). Solo si el pedido estaba vivo.
+  --    Sub-bloque propio: si la limpieza de tareas fallara, NO revierte el paso del pedido a entregado.
+  IF EXISTS (SELECT 1 FROM pedidos WHERE id = NEW.pedido_id AND estado NOT IN ('entregado', 'cancelado')) THEN
+    BEGIN
+      UPDATE wms_tareas
+         SET estado = 'completada', completed_at = now(),
+             notas = COALESCE(notas || ' — ', '') || 'Confirmada al entregarse el envío #' || COALESCE(NEW.numero::text, '?')
+       WHERE pedido_id = NEW.pedido_id AND tenant_id = NEW.tenant_id
+         AND tipo = 'picking' AND estado IN ('pendiente', 'en_curso');
+      UPDATE wms_tareas
+         SET estado = 'cancelada',
+             notas = COALESCE(notas || ' — ', '') || 'Cancelada: el envío #' || COALESCE(NEW.numero::text, '?') || ' ya se entregó'
+       WHERE pedido_id = NEW.pedido_id AND tenant_id = NEW.tenant_id
+         AND tipo = 'replenishment' AND estado IN ('pendiente', 'en_curso');
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING '[trg_envio_entregado_sincroniza_pedido] tareas del pedido % : %', NEW.pedido_id, SQLERRM;
+    END;
+  END IF;
+
   UPDATE pedidos
      SET estado = 'entregado', entregado_at = now()
    WHERE id = NEW.pedido_id
@@ -16366,6 +16456,24 @@ EXCEPTION WHEN OTHERS THEN
 END; $function$
 
 
+CREATE OR REPLACE FUNCTION public.trg_venta_despachada_pedido_listo()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.estado NOT IN ('despachada', 'facturada') THEN RETURN NULL; END IF;
+  IF OLD.estado IN ('despachada', 'facturada') THEN RETURN NULL; END IF;
+  -- SECURITY DEFINER: el pedido tiene que ser del mismo negocio que la venta.
+  UPDATE pedidos
+     SET estado = 'listo_para_entrega'
+   WHERE venta_origen_id = NEW.id AND tenant_id = NEW.tenant_id AND estado = 'confirmado';
+  RETURN NULL;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.trg_venta_items_sync_pedido()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -16789,6 +16897,7 @@ CREATE TRIGGER trg_ventas_auto_pedido AFTER INSERT OR UPDATE OF estado, monto_pa
 CREATE TRIGGER trg_ventas_cc_guard BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_guard();
 CREATE TRIGGER trg_ventas_cc_vencimiento BEFORE INSERT OR UPDATE OF es_cuenta_corriente, estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_vencimiento();
 CREATE TRIGGER trg_ventas_cierre BEFORE DELETE OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_ventas_periodo_cerrado();
+CREATE TRIGGER trg_ventas_despachada_pedido_listo AFTER UPDATE OF estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_despachada_pedido_listo();
 CREATE TRIGGER trg_ventas_guard_fiscal BEFORE INSERT OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_guard_campos_fiscales();
 CREATE TRIGGER trg_ventas_no_duplica_pedido_venta BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_no_duplica_pedido_venta();
 CREATE TRIGGER trg_ventas_propagar_sucursal_items AFTER UPDATE OF sucursal_id ON public.ventas FOR EACH ROW WHEN ((old.sucursal_id IS DISTINCT FROM new.sucursal_id)) EXECUTE FUNCTION fn_ventas_propagar_sucursal_items();

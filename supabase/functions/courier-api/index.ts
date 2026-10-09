@@ -116,8 +116,9 @@ serve(async (req) => {
         const { data: venta } = await admin.from('ventas').select('cliente_id').eq('id', envio.venta_id).maybeSingle()
         if (venta?.cliente_id) {
           const { data: cli } = await admin.from('clientes')
-            .select('nombre, email, telefono, documento').eq('id', venta.cliente_id).maybeSingle()
-          if (cli) destinatario = { nombre: cli.nombre ?? 'Cliente', email: cli.email ?? '', telefono: cli.telefono ?? '', documento: cli.documento ?? '' }
+            .select('nombre, email, telefono, dni, cuit_receptor').eq('id', venta.cliente_id).maybeSingle()
+          // `clientes` no tiene `documento` (es `dni` / `cuit_receptor`): pedirlo daba 400 y la etiqueta salía a "Cliente".
+          if (cli) destinatario = { nombre: cli.nombre ?? 'Cliente', email: cli.email ?? '', telefono: cli.telefono ?? '', documento: cli.dni ?? cli.cuit_receptor ?? '' }
         }
       }
 

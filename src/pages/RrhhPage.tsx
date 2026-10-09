@@ -636,11 +636,11 @@ export default function RrhhPage() {
     queryKey: ['tenant-users-link', tenant?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('users')
-        .select('id, nombre_display, email, rol')
+        .select('id, nombre_display, rol')
         .eq('tenant_id', tenant!.id)
         .order('nombre_display')
       if (error) throw error
-      return (data ?? []) as Array<{ id: string; nombre_display: string | null; email: string; rol: string }>
+      return (data ?? []) as Array<{ id: string; nombre_display: string | null; rol: string }>
     },
     enabled: !!tenant && (activeTab === 'empleados' || activeTab === 'equipo'),
   })
@@ -2455,7 +2455,7 @@ export default function RrhhPage() {
                       <option value="">Sin vincular</option>
                       {tenantUsers.map((u) => {
                         const vinculadoOtro = empleados.find(e => e.user_id === u.id && e.id !== selectedEmpleado?.id)
-                        const label = `${u.nombre_display || u.email} — ${u.rol}${vinculadoOtro ? ` · ya vinculado a ${nombreEmpleado(vinculadoOtro)}` : ''}`
+                        const label = `${u.nombre_display || 'Sin nombre'} — ${u.rol}${vinculadoOtro ? ` · ya vinculado a ${nombreEmpleado(vinculadoOtro)}` : ''}`
                         return (
                           <option key={u.id} value={u.id} disabled={!!vinculadoOtro}>
                             {label}
@@ -2646,7 +2646,7 @@ export default function RrhhPage() {
                         {(() => {
                           if (!emp.user_id) return <span className="text-gray-400 dark:text-gray-500">-</span>
                           const u = tenantUsers.find(x => x.id === emp.user_id)
-                          const label = u ? (u.nombre_display || u.email) : 'Usuario'
+                          const label = u ? (u.nombre_display || 'Sin nombre') : 'Usuario'
                           return (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
                               <UserCheck size={11} /> {label}

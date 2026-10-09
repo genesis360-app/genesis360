@@ -8,10 +8,10 @@
  * (Entregar, PED4) entregado(_parcial) → cancelado, con deshacer-lanzamiento/des-pickeo (PED5)
  * y lanzamiento en bolsa con staging (PED6) disponibles en los puntos que corresponda.
  */
-import { useState, useMemo } from 'react'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useState, useMemo, type ReactNode } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronUp, Package, User, Truck, CalendarClock, Rocket, Layers, Printer, Download, ScanBarcode, ClipboardList, CheckCircle2, UserCog } from 'lucide-react'
+import { ArrowLeft, Plus, X, Search, ChevronDown, Package, User, Truck, CalendarClock, Rocket, Layers, Printer, Download, ScanBarcode, ClipboardList, CheckCircle2, UserCog, Store, Undo2, XCircle, Info } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { descargarCsv, descargarExcel, nombreConFecha } from '@/lib/exportarArchivo'
 // xlsx/jspdf/jspdf-autotable se importan dinámicamente en exportarExcel/exportarPDF
@@ -19,10 +19,11 @@ import { descargarCsv, descargarExcel, nombreConFecha } from '@/lib/exportarArch
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
-import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { logActividad } from '@/lib/actividadLog'
 import { BRAND } from '@/config/brand'
-import { ActionMenu } from '@/components/ActionMenu'
+import { ActionMenu, type ActionMenuItem } from '@/components/ActionMenu'
+import { ESTADO_BADGE } from '@/lib/pedidoEstados'
+import { cantidadConUnidad } from '@/lib/cantidadUnidad'
 import { PageTabs } from '@/components/PageTabs'
 import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
 import {
@@ -39,15 +40,9 @@ import { useSupervisorAutorizaciones, useSupervisionBadge, avisarSupervisor, typ
 import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { imprimirConNombre } from '@/lib/imprimirConNombre'
 
-const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
-  borrador:            { label: 'Borrador',            cls: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' },
-  confirmado:          { label: 'Confirmado',           cls: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' },
-  en_preparacion:      { label: 'En preparación',       cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
-  listo_para_entrega:  { label: 'Listo para entrega',   cls: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' },
-  entregado:           { label: 'Entregado',            cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' },
-  entregado_parcial:   { label: 'Entregado parcial',    cls: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' },
-  cancelado:           { label: 'Cancelado',            cls: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
-}
+// Columnas de la fila en pantallas anchas: casilla · pedido · cliente · entrega · estado · acciones.
+// En angosto la fila se reacomoda como tarjeta (ver las clases row-/col- de cada celda).
+const GRILLA_PEDIDO = 'lg:grid-cols-[1.75rem_minmax(8rem,0.8fr)_minmax(12rem,1.5fr)_minmax(10rem,1fr)_minmax(8.5rem,0.7fr)_15rem] lg:gap-x-4'
 
 interface ItemDraft {
   producto: { id: string; nombre: string; sku: string; unidad_medida: string | null }
@@ -61,7 +56,6 @@ export default function PedidosPage() {
   const [searchParams] = useSearchParams()
   const { tenant, user } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
-  const { avanzado: modoAvanzado } = useModoOperacion()
   const qc = useQueryClient()
   const confirmar = useConfirm()
 
@@ -72,12 +66,11 @@ export default function PedidosPage() {
   const puedeYo = (transicion: PedidoTransicion) =>
     puedeTransicionPedido(user?.rol, transicion, ((tenant as any)?.pedido_transiciones_roles ?? null) as PedidoTransicionesConfig)
 
-  // ── Tab "Tareas WMS" — mudado acá desde Inventario (2026-08-08): Pedidos es donde vive el
-  // ciclo de vida de la preparación/despacho, tiene más sentido gestionar la cola acá que en
-  // Inventario. Misma fuente y RPCs que /picking (mobile); acá es la vista de gestión de
-  // escritorio, con asignación manual a un operario.
-  const [tab, setTab] = useState<'pedidos' | 'wms' | 'autorizaciones'>('pedidos')
-  const puedeAsignarTareas = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
+  // La cola de tareas de Depósito ("Tareas WMS") se mudó a Picking → Tareas (pedido de GO 2026-10-08).
+  const [tab, setTab] = useState<'pedidos' | 'autorizaciones'>(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    return t === 'autorizaciones' ? 'autorizaciones' : 'pedidos'
+  })
 
   const [showNuevo, setShowNuevo] = useState(false)
   const [tipoPedidoId, setTipoPedidoId] = useState('')
@@ -89,6 +82,9 @@ export default function PedidosPage() {
   const [fechaEntrega, setFechaEntrega] = useState('')
   const [referencia, setReferencia] = useState('')
   const [requiereEnvio, setRequiereEnvio] = useState(false)
+  // Mig 485: el cliente acepta entregas parciales (default del negocio; se puede cambiar al entregar).
+  const parcialDefaultNegocio = !!(tenant as any)?.pedido_entrega_parcial_default
+  const [aceptaParcial, setAceptaParcial] = useState(parcialDefaultNegocio)
   const [notasCab, setNotasCab] = useState('')
   const [prodSearch, setProdSearch] = useState('')
   const [items, setItems] = useState<ItemDraft[]>([])
@@ -182,16 +178,22 @@ export default function PedidosPage() {
 
   // Día LOCAL: con toISOString, después de las 21 h de Argentina "hoy" ya era mañana y un pedido de hoy salía atrasado.
   const hoyStrPed = hoyLocalISO()
-  const pedidosFiltradosSinOrden = (pedidos as any[])
-    .filter(p => !filtroEstado || p.estado === filtroEstado)
-    .filter(p => !soloVencidos || (
-      p.fecha_entrega_solicitada && p.fecha_entrega_solicitada < hoyStrPed
-      && !['entregado', 'cancelado'].includes(p.estado)
-    ))
+  const esVencido = (p: any) => !!p.fecha_entrega_solicitada && p.fecha_entrega_solicitada < hoyStrPed
+    && !['entregado', 'cancelado'].includes(p.estado)
+  // La búsqueda va primero: los contadores de los filtros de estado cuentan sobre lo buscado.
+  const pedidosBuscados = (pedidos as any[])
     .filter(p => evaluarPildorasPedido(
       { numero: p.numero, referencia: p.referencia ?? null, clienteNombre: p.clientes?.nombre ?? p.cliente_nombre ?? null },
       pildorasEfectivas, combinador,
     ))
+  const conteoEstados = pedidosBuscados.reduce<Record<string, number>>((acc, p) => {
+    acc[p.estado] = (acc[p.estado] ?? 0) + 1
+    return acc
+  }, {})
+  const conteoVencidos = pedidosBuscados.filter(esVencido).length
+  const pedidosFiltradosSinOrden = pedidosBuscados
+    .filter(p => !filtroEstado || p.estado === filtroEstado)
+    .filter(p => !soloVencidos || esVencido(p))
   const pedidosFiltrados = ordenPedidos === 'entrega' ? ordenarPorEntrega(pedidosFiltradosSinOrden) : pedidosFiltradosSinOrden
 
   // ── K3 (PED8): exportar Excel/PDF/CSV — una fila por línea de pedido, mismo criterio que
@@ -276,92 +278,11 @@ export default function PedidosPage() {
     enabled: !!expandedId,
   })
 
-  // ── Tab WMS: cola de tareas de picking/reabastecimiento (mig 289), mudada desde Inventario.
-  // Misma fuente y RPCs que /picking (mobile); acá es una lista de escritorio sin escaneo, con
-  // asignación manual a un operario (usuario_asignado_id, columna que ya existía sin uso).
-  const { data: wmsTareas = [], isLoading: loadingWms } = useQuery({
-    queryKey: ['wms_tareas', tenant?.id, sucursalId],
-    queryFn: async () => {
-      let q = supabase.from('wms_tareas')
-        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero), usuario_asignado:users!wms_tareas_usuario_asignado_id_fkey(nombre_display)')
-        .eq('tenant_id', tenant!.id)
-        .in('estado', ['pendiente', 'en_curso'])
-        // reposicion_gondola (mig 355) es trabajo del Repositor, vive en /repositores — nunca se mezcla
-        // con la tab WMS de Pedidos.
-        .neq('tipo', 'reposicion_gondola')
-        .order('prioridad', { ascending: false })
-        .order('created_at')
-      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
-      const { data, error } = await q
-      if (error) throw error
-      return data ?? []
-    },
-    enabled: !!tenant && tab === 'wms',
-  })
-
-  // Operarios asignables — cualquier usuario activo del tenant (no se restringe por rol: en
-  // equipos chicos el mismo DUEÑO/SUPERVISOR también hace picking/armado).
-  const { data: usuariosAsignables = [] } = useQuery({
-    queryKey: ['usuarios-asignables-wms', tenant?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from('users')
-        .select('id, nombre_display, rol').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre_display')
-      return data ?? []
-    },
-    enabled: !!tenant && tab === 'wms' && puedeAsignarTareas,
-  })
-
-  const [completandoWms, setCompletandoWms] = useState<string | null>(null)
-  const completarTareaWms = async (t: any) => {
-    if (t.tarea_precedente_id) {
-      const prec = (wmsTareas as any[]).find(x => x.id === t.tarea_precedente_id)
-      if (prec && prec.estado !== 'completada') { toast.error('Primero hay que completar el reabastecimiento de esta tarea'); return }
-    }
-    const esReab = t.tipo === 'replenishment'
-    const esArmado = t.tipo === 'armado'
-    setCompletandoWms(t.id)
-    const rpc = esArmado ? 'fn_completar_tarea_armado' : esReab ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
-    const { error } = await supabase.rpc(rpc, { p_tarea_id: t.id })
-    setCompletandoWms(null)
-    if (error) { toast.error(error.message); return }
+  // Refresca la cola de tareas (Picking → Tareas) y los pedidos después de lanzar/deslanzar/entregar.
+  const invalidarWms = () => {
     qc.invalidateQueries({ queryKey: ['wms_tareas'] })
-    logActividad({
-      entidad: 'wms_tarea', entidad_id: t.id, entidad_nombre: t.productos?.nombre ?? t.lpn_origen ?? undefined,
-      accion: 'cambio_estado', campo: 'estado', valor_anterior: t.estado, valor_nuevo: 'completada',
-      pagina: '/pedidos', tipo_transaccion: esReab ? 'traslado' : undefined,
-      producto_id: t.producto_id, lpn: t.lpn_origen, sucursal_id: t.sucursal_id,
-    })
-    toast.success('Tarea completada')
-  }
-  const cancelarTareaWms = async (t: any) => {
-    const esReab = t.tipo === 'replenishment'
-    const esArmado = t.tipo === 'armado'
-    const tieneDependiente = esReab && (wmsTareas as any[]).some(x => x.tarea_precedente_id === t.id)
-    const msg = `¿Cancelar esta tarea de ${esArmado ? 'armado' : esReab ? 'reabastecimiento' : 'picking'}?` +
-      (esArmado ? ' Se libera la reserva de los componentes.' : '') +
-      (tieneDependiente ? ' La tarea de picking que depende de este reabastecimiento también se va a cancelar.' : '')
-    if (!(await confirmar(msg, { danger: true }))) return
-    setCompletandoWms(t.id)
-    const { error } = await supabase.rpc('fn_cancelar_tarea_wms', { p_tarea_id: t.id })
-    setCompletandoWms(null)
-    if (error) { toast.error(error.message); return }
-    qc.invalidateQueries({ queryKey: ['wms_tareas'] })
-    logActividad({
-      entidad: 'wms_tarea', entidad_id: t.id, entidad_nombre: t.productos?.nombre ?? t.lpn_origen ?? undefined,
-      accion: 'cambio_estado', campo: 'estado', valor_anterior: t.estado, valor_nuevo: 'cancelada',
-      pagina: '/pedidos', producto_id: t.producto_id, lpn: t.lpn_origen, sucursal_id: t.sucursal_id,
-    })
-    toast.success('Tarea cancelada')
-  }
-  const asignarTareaWms = async (t: any, usuarioId: string | null) => {
-    const { error } = await supabase.from('wms_tareas').update({ usuario_asignado_id: usuarioId }).eq('id', t.id)
-    if (error) { toast.error(error.message); return }
-    qc.invalidateQueries({ queryKey: ['wms_tareas'] })
-    logActividad({
-      entidad: 'wms_tarea', entidad_id: t.id, entidad_nombre: t.productos?.nombre ?? t.lpn_origen ?? undefined,
-      accion: 'editar', campo: 'usuario_asignado_id', valor_anterior: t.usuario_asignado_id, valor_nuevo: usuarioId,
-      pagina: '/pedidos', producto_id: t.producto_id, lpn: t.lpn_origen, sucursal_id: t.sucursal_id,
-    })
+    qc.invalidateQueries({ queryKey: ['wms_tareas_pedidos'] })
+    qc.invalidateQueries({ queryKey: ['pedidos'] })
   }
 
   // ── Ventas generadas por el pedido expandido (A5: guía para devolver antes de cancelar) ──
@@ -418,7 +339,7 @@ export default function PedidosPage() {
 
   const resetForm = () => {
     setTipoPedidoId(''); setClienteId(''); setClienteNombre(''); setClienteTelefono(''); setClienteSearch('')
-    setFechaEntrega(''); setReferencia(''); setRequiereEnvio(false); setNotasCab(''); setItems([]); setProdSearch('')
+    setFechaEntrega(''); setReferencia(''); setRequiereEnvio(false); setAceptaParcial(parcialDefaultNegocio); setNotasCab(''); setItems([]); setProdSearch('')
   }
 
   // ── Crear pedido (borrador) ───────────────────────────────────────────────────
@@ -482,6 +403,7 @@ export default function PedidosPage() {
         fecha_entrega_solicitada: fechaEntrega || null,
         referencia: referencia.trim() || null,
         requiere_envio: requiereEnvio,
+        acepta_entrega_parcial: aceptaParcial,
         notas: notasCab.trim() || null,
         creado_por: user?.id ?? null,
       }).select('id, numero').single()
@@ -529,7 +451,7 @@ export default function PedidosPage() {
     onSuccess: (d: any) => {
       toast.success(`Pedido #${d.numero} lanzado — ${d.nTareas} tarea(s) generada(s) en Picking`)
       qc.invalidateQueries({ queryKey: ['pedidos'] })
-      qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+      invalidarWms()
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -584,7 +506,7 @@ export default function PedidosPage() {
       toast.success(`Bolsa lanzada — ${d.nPedidos} pedido(s), ${d.nTareas} tarea(s) generada(s) en Picking`)
       setBolsaModalOpen(false); setBolsaUbicacionId(''); setBolsaSeleccion(new Set())
       qc.invalidateQueries({ queryKey: ['pedidos'] })
-      qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+      invalidarWms()
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -637,6 +559,7 @@ export default function PedidosPage() {
 
   // ── Entregar (PED4): abre el modal con la cantidad pendiente de cada línea precargada ──
   const [entregaIdempotencyKey, setEntregaIdempotencyKey] = useState('')
+  const [entregaParcial, setEntregaParcial] = useState(false)
   const abrirEntrega = (pedido: any) => {
     const cants: Record<string, string> = {}
     for (const it of pedido.pedido_items ?? []) {
@@ -645,6 +568,7 @@ export default function PedidosPage() {
       if (pendiente > 0) cants[it.id] = String(pendiente)
     }
     setEntregaCantidades(cants)
+    setEntregaParcial(pedido.acepta_entrega_parcial ?? parcialDefaultNegocio)
     setEntregaMedioPago('Efectivo')
     setEntregaSesionId('')
     setEntregaIdempotencyKey(crypto.randomUUID())
@@ -670,6 +594,8 @@ export default function PedidosPage() {
         p_medio_pago: [{ tipo: entregaMedioPago, monto: null }],
         p_entregas: entregas,
         p_idempotency_key: entregaIdempotencyKey,
+        // Mig 485: completa (default) o parcial (solo lo pickeado). El servidor lo controla igual.
+        p_permitir_parcial: entregaParcial,
       })
       if (error) throw error
       logActividad({
@@ -772,7 +698,7 @@ export default function PedidosPage() {
     onSuccess: (numero) => {
       toast.success(`Pedido #${numero} — lanzamiento deshecho, vuelve a Confirmado`)
       qc.invalidateQueries({ queryKey: ['pedidos'] })
-      qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+      invalidarWms()
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -801,7 +727,7 @@ export default function PedidosPage() {
       logActividad({ entidad: 'pedido', entidad_id: pedido_id, entidad_nombre: `Pedido #${pedido_numero ?? ''}`, accion: 'aprobar', campo: 'estado', valor_nuevo: 'cancelado', pagina: '/pedidos' })
       toast.success('Cancelación aprobada y ejecutada')
       qc.invalidateQueries({ queryKey: ['pedidos'] })
-      qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+      invalidarWms()
     } catch (e: any) {
       toast.error(e.message ?? 'No se pudo aprobar')
     } finally {
@@ -828,9 +754,88 @@ export default function PedidosPage() {
     }
   }
 
+  // ── Acciones por fila: UN botón con el próximo paso según el estado; el resto (incluido
+  // cancelar) va al menú "⋯". Mismas reglas y guards que antes, solo reordenadas.
+  const accionesPedido = (p: any): { principal: ReactNode; menu: ActionMenuItem[]; nota: { corta: string; detalle: string } | null } => {
+    const motivoBloqueo = p.estado === 'confirmado' ? motivoNoLanzarPedido(p.ventas?.estado) : null
+    const nota = motivoBloqueo ? {
+      corta: p.ventas?.estado === 'pendiente' ? 'Venta en presupuesto'
+        : ['despachada', 'facturada'].includes(p.ventas?.estado) ? 'Venta ya despachada'
+        : `Venta ${p.ventas?.estado}`,
+      detalle: motivoBloqueo,
+    } : null
+    // "Entregar" acá GENERA la venta real. Un pedido nacido de una venta ya la tiene, así que ese
+    // camino está bloqueado server-side (mig 316): se entrega desde Ventas → Pedidos o Envíos.
+    const puedeEntregarAca = ['en_preparacion', 'listo_para_entrega', 'entregado_parcial'].includes(p.estado) && puedeYo('entregar') && !p.venta_origen_id
+    const linkEntrega = p.venta_origen_id && !['entregado', 'cancelado'].includes(p.estado)
+      ? (p.requiere_envio
+        ? { label: 'Ver en Envíos', corto: 'Ver en Envíos', icon: Truck, ir: () => navigate('/envios'), title: 'Este pedido sale por envío: se despacha desde el módulo Envíos' }
+        : { label: 'Entregar en mostrador', corto: 'Entregar', icon: Store, ir: () => navigate('/ventas?tab=pedidos'), title: 'Este pedido ya tiene su venta: lo entrega el mostrador desde Ventas → Pedidos' })
+      : null
+    const irAPicking = () => navigate(`/picking?busqueda=${encodeURIComponent(`Pedido:${p.numero}`)}`)
+    const verPicking = ['en_preparacion', 'listo_para_entrega'].includes(p.estado)
+
+    const btnHacer = 'flex items-center justify-center gap-1.5 w-36 whitespace-nowrap text-sm font-semibold bg-accent text-white px-3.5 py-2 rounded-lg hover:bg-accent/90 transition-[background-color,transform] duration-150 active:scale-[0.97] disabled:opacity-50'
+    const btnIr = 'flex items-center justify-center gap-1.5 w-36 whitespace-nowrap text-sm font-medium text-accent-text border border-accent-text/30 px-3.5 py-2 rounded-lg hover:bg-accent/10 transition-[background-color,transform] duration-150 active:scale-[0.97]'
+
+    let principal: ReactNode = null
+    let usado: 'confirmar' | 'lanzar' | 'picking' | 'entregar' | 'link' | null = null
+    if (p.estado === 'borrador' && puedeYo('confirmar')) {
+      usado = 'confirmar'
+      principal = (
+        <button onClick={() => cambiarEstado.mutate({ pedido: p, nuevoEstado: 'confirmado' })} disabled={cambiarEstado.isPending} className={btnHacer}>
+          <CheckCircle2 size={14} /> Confirmar
+        </button>
+      )
+    } else if (p.estado === 'confirmado' && puedeYo('lanzar') && !motivoBloqueo) {
+      usado = 'lanzar'
+      principal = (
+        <button onClick={() => lanzarPedido.mutate(p)} disabled={lanzarPedido.isPending}
+          title="Genera las tareas de picking/reabastecimiento en Depósito y reserva el stock" className={btnHacer}>
+          <Rocket size={14} /> {lanzarPedido.isPending ? 'Lanzando…' : 'Lanzar'}
+        </button>
+      )
+    } else if (p.estado === 'en_preparacion') {
+      usado = 'picking'
+      principal = <button onClick={irAPicking} className={btnIr}><ScanBarcode size={14} /> Ver en Picking</button>
+    } else if (puedeEntregarAca) {
+      usado = 'entregar'
+      principal = (
+        <button onClick={() => abrirEntrega(p)} title="Genera la venta real: rebaja el stock reservado y asienta el cobro en caja" className={btnHacer}>
+          <Truck size={14} /> Entregar
+        </button>
+      )
+    } else if (linkEntrega) {
+      usado = 'link'
+      const Icono = linkEntrega.icon
+      principal = <button onClick={linkEntrega.ir} title={linkEntrega.title} className={btnIr}><Icono size={14} /> {linkEntrega.corto}</button>
+    }
+
+    const menu: ActionMenuItem[] = [
+      { label: 'Ver en Picking', icon: ScanBarcode, onClick: irAPicking, hidden: !verPicking || usado === 'picking' },
+      { label: 'Entregar', icon: Truck, onClick: () => abrirEntrega(p), hidden: !puedeEntregarAca || usado === 'entregar' },
+      { label: linkEntrega?.label ?? '', icon: linkEntrega?.icon, onClick: () => linkEntrega?.ir(), hidden: !linkEntrega || usado === 'link' },
+      { label: 'Imprimir lista de picking', icon: Printer, onClick: () => setImprimirPedido(p), hidden: !p.lanzado_at },
+      { label: 'Cerrar pedido', icon: CheckCircle2, onClick: () => cerrarPedido.mutate(p), disabled: cerrarPedido.isPending, hidden: p.estado !== 'entregado_parcial' },
+      {
+        label: 'Deshacer lanzamiento', icon: Undo2, danger: true, disabled: deslanzarPedido.isPending,
+        hidden: !(p.estado === 'en_preparacion' && puedeYo('deslanzar')),
+        onClick: async () => { if (await confirmar(`¿Deshacer el lanzamiento del pedido #${p.numero}? Se liberan las reservas de stock (solo si nada se pickeó todavía).`, { danger: true })) deslanzarPedido.mutate(p) },
+      },
+      // A5: si el pedido ya generó una venta ACTIVA, fn_cancelar_pedido bloquea con un mensaje claro;
+      // hay que devolverla primero desde Ventas → Historial (link en el detalle expandido).
+      {
+        label: 'Cancelar pedido', icon: XCircle, danger: true, disabled: cancelarPedido.isPending,
+        hidden: !(p.estado !== 'cancelado' && puedeYo('cancelar')),
+        onClick: async () => { if (await confirmar(`¿Cancelar el pedido #${p.numero}?${p.lanzado_at ? ' Se liberan las reservas de stock (solo si nada se pickeó todavía).' : ''}`, { danger: true })) cancelarPedido.mutate(p) },
+      },
+    ]
+    return { principal, menu: menu.filter(i => !i.hidden), nota }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-4xl mx-auto space-y-4 pb-8">
+    <div className="space-y-4 pb-8">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
           <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
@@ -850,15 +855,14 @@ export default function PedidosPage() {
         )}
       </div>
 
-      {(modoAvanzado || puedeVerAutorizacionesPedidos) && (
+      {puedeVerAutorizacionesPedidos && (
         <PageTabs
           tabs={[
             { id: 'pedidos', label: 'Pedidos', icon: Package },
-            ...(modoAvanzado ? [{ id: 'wms', label: 'Tareas WMS', icon: ScanBarcode }] : []),
             ...(puedeVerAutorizacionesPedidos ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: UserCog, badge: autPendientesBadge }] : []),
           ]}
           active={tab}
-          onChange={(id) => setTab(id as 'pedidos' | 'wms' | 'autorizaciones')}
+          onChange={(id) => setTab(id as 'pedidos' | 'autorizaciones')}
         />
       )}
 
@@ -948,8 +952,9 @@ export default function PedidosPage() {
 
       {tab === 'pedidos' && (
       <>
-      <div className="flex items-start gap-2 flex-wrap">
-        <div className="flex-1 min-w-[220px] max-w-[420px]">
+      {/* Barra: buscar a la izquierda; orden y exportar a la derecha. */}
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="flex-1 min-w-[240px] max-w-xl">
           <BuscadorPildoras
             camposFiltro={CAMPOS_FILTRO_PEDIDOS}
             pildoras={pildoras}
@@ -971,313 +976,289 @@ export default function PedidosPage() {
             onCombinadorChange={setCombinador}
           />
         </div>
-        <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
-          className={`${inputCls} max-w-[220px]`}>
-          <option value="">Todos los estados</option>
-          {Object.entries(ESTADO_BADGE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
-        <select value={ordenPedidos} aria-label="Orden de los pedidos"
-          onChange={e => {
-            const v = e.target.value === 'recientes' ? 'recientes' : 'entrega'
-            setOrdenPedidos(v)
-            try { localStorage.setItem('pedidos-orden', v) } catch { /* sin storage: solo esta sesión */ }
-          }}
-          className={`${inputCls} max-w-[220px]`}>
-          <option value="entrega">Ordenar por fecha de entrega</option>
-          <option value="recientes">Más recientes primero</option>
-        </select>
-        {soloVencidos && (
-          <button onClick={() => setSoloVencidos(false)}
-            className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-xl bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
-            Con entrega vencida <X size={12} />
-          </button>
-        )}
-        <ActionMenu label="Exportar" items={[
-          { label: 'Exportar Excel', icon: Download, onClick: exportarExcel },
-          { label: 'Exportar CSV', icon: Download, onClick: exportarCSV },
-          { label: 'Exportar PDF', icon: Download, onClick: exportarPDF },
-        ]} />
-        {bolsaSeleccion.size > 0 && puedeYo('lanzar') && (
-          <div className="flex items-center gap-2 ml-auto bg-accent/10 border border-accent/30 rounded-xl px-3 py-1.5">
-            <span className="text-xs font-medium text-accent-text">{bolsaSeleccion.size} pedido(s) seleccionado(s)</span>
-            <button onClick={() => setBolsaModalOpen(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold bg-accent text-white px-3 py-1.5 rounded-lg hover:bg-accent/90 transition-colors">
-              <Layers size={13} /> Lanzar bolsa
+        <div className="flex items-center gap-2 ml-auto">
+          <select value={ordenPedidos} aria-label="Orden de los pedidos"
+            onChange={e => {
+              const v = e.target.value === 'recientes' ? 'recientes' : 'entrega'
+              setOrdenPedidos(v)
+              try { localStorage.setItem('pedidos-orden', v) } catch { /* sin storage: solo esta sesión */ }
+            }}
+            className={`${inputCls} w-auto`}>
+            <option value="entrega">Por fecha de entrega</option>
+            <option value="recientes">Más recientes primero</option>
+          </select>
+          <ActionMenu label="Exportar" items={[
+            { label: 'Exportar Excel', icon: Download, onClick: exportarExcel },
+            { label: 'Exportar CSV', icon: Download, onClick: exportarCSV },
+            { label: 'Exportar PDF', icon: Download, onClick: exportarPDF },
+          ]} />
+        </div>
+      </div>
+
+      {/* Filtros por estado con su cantidad (sobre lo buscado). Un click filtra; otro click vuelve a Todos. */}
+      <div role="group" aria-label="Filtrar por estado" className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+        {[
+          { id: '', label: 'Todos', n: pedidosBuscados.length },
+          ...Object.entries(ESTADO_BADGE)
+            .filter(([k]) => (conteoEstados[k] ?? 0) > 0 || filtroEstado === k)
+            .map(([k, v]) => ({ id: k, label: v.label, n: conteoEstados[k] ?? 0 })),
+        ].map(f => {
+          const activo = filtroEstado === f.id
+          return (
+            <button key={f.id || 'todos'} type="button" aria-pressed={activo}
+              onClick={() => setFiltroEstado(activo && f.id ? '' : f.id)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+                activo
+                  ? 'bg-primary text-white dark:bg-white dark:text-gray-900 font-medium'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/60'}`}>
+              {f.label}
+              <span className={`tabular-nums text-xs ${activo ? 'opacity-70' : 'text-gray-400 dark:text-gray-500'}`}>{f.n}</span>
             </button>
-            <button onClick={() => setBolsaSeleccion(new Set())} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
-          </div>
+          )
+        })}
+        {(conteoVencidos > 0 || soloVencidos) && (
+          <button type="button" aria-pressed={soloVencidos} onClick={() => setSoloVencidos(v => !v)}
+            className={`ml-1 flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+              soloVencidos
+                ? 'bg-red-600 text-white font-medium'
+                : 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'}`}>
+            <CalendarClock size={13} /> Entrega vencida
+            <span className={`tabular-nums text-xs ${soloVencidos ? 'opacity-80' : ''}`}>{conteoVencidos}</span>
+            {soloVencidos && <X size={12} />}
+          </button>
         )}
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+        {/* Encabezado de columnas: solo en pantallas anchas, donde la fila es una grilla. */}
+        {pedidosFiltrados.length > 0 && (
+          <div className={`hidden lg:grid ${GRILLA_PEDIDO} px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400`}>
+            <span />
+            <span>Pedido</span>
+            <span>Cliente</span>
+            <span>Entrega</span>
+            <span>Estado</span>
+            <span className="text-right pr-12">Próximo paso</span>
+          </div>
+        )}
+        <div className="divide-y divide-gray-100 dark:divide-gray-700">
         {isLoading ? (
-          <p className="p-6 text-sm text-gray-400 text-center">Cargando…</p>
+          <div className="p-4 space-y-3" aria-label="Cargando pedidos">
+            {[0, 1, 2, 3].map(i => <div key={i} className="h-12 rounded-lg bg-gray-100 dark:bg-gray-700/50 animate-pulse" />)}
+          </div>
         ) : pedidosFiltrados.length === 0 ? (
-          <div className="p-10 text-center">
-            <Package size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-            <p className="text-sm text-gray-500 dark:text-gray-400">Sin pedidos todavía</p>
+          <div className="py-14 px-6 text-center">
+            <Package size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+            {(pedidos as any[]).length === 0 ? (
+              <>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Todavía no hay pedidos</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Se crean solos cuando una venta necesita preparación o envío.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Ningún pedido coincide con el filtro</p>
+                <button type="button" onClick={() => { setFiltroEstado(''); setSoloVencidos(false); setPildoras([]); setEntrada('') }}
+                  className="mt-2 text-sm text-accent-text hover:underline">Ver todos</button>
+              </>
+            )}
           </div>
         ) : pedidosFiltrados.map(p => {
           const badge = ESTADO_BADGE[p.estado] ?? ESTADO_BADGE.borrador
           const isExp = expandedId === p.id
           const nItems = (p.pedido_items ?? []).length
           const cliente = p.clientes?.nombre ?? p.cliente_nombre ?? 'Sin cliente'
+          const { principal, menu, nota } = accionesPedido(p)
+          const seleccionable = p.estado === 'confirmado' && puedeYo('lanzar') && !motivoNoLanzarPedido(p.ventas?.estado)
           return (
-            <div key={p.id}>
-              <div className="p-4 flex items-center gap-3 flex-wrap">
-                {p.estado === 'confirmado' && puedeYo('lanzar') && (
-                  <input type="checkbox" checked={bolsaSeleccion.has(p.id)} onChange={() => toggleBolsaSeleccion(p.id)}
-                    className="rounded flex-shrink-0" title="Seleccionar para lanzar en bolsa" />
-                )}
-                <button onClick={() => setExpandedId(isExp ? null : p.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
-                  {isExp ? <ChevronUp size={15} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />}
-                  <span className="font-semibold text-sm text-primary dark:text-white">#{p.numero}</span>
-                  {p.referencia && <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded" title="Referencia / Nº externo">{p.referencia}</span>}
-                  <span className="text-xs text-gray-400">{p.tipos_pedido?.nombre}</span>
-                  <span className="text-sm text-gray-600 dark:text-gray-300 truncate flex items-center gap-1"><User size={12} className="text-gray-400" />{cliente}</span>
-                  <span className="text-xs text-gray-400">{nItems} línea{nItems !== 1 ? 's' : ''}</span>
-                  {p.requiere_envio && <Truck size={12} className="text-gray-400" />}
-                  {p.fecha_entrega_solicitada && (() => {
+            <div key={p.id} className={isExp ? 'bg-gray-50/70 dark:bg-gray-900/30' : ''}>
+              {/* Click en cualquier parte "vacía" de la fila la expande; botones y casillas hacen lo suyo. */}
+              <div
+                onClick={e => { if (!(e.target as HTMLElement).closest('button, input, a, select, [role="menu"]')) setExpandedId(isExp ? null : p.id) }}
+                className={`grid grid-cols-[1.75rem_minmax(0,1fr)_auto] ${GRILLA_PEDIDO} gap-x-3 gap-y-1.5 items-center px-4 py-3 cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/30`}>
+                <div className="row-start-1 col-start-1 lg:row-auto lg:col-auto flex items-center">
+                  {seleccionable ? (
+                    <input type="checkbox" checked={bolsaSeleccion.has(p.id)} onChange={() => toggleBolsaSeleccion(p.id)}
+                      aria-label={`Seleccionar el pedido #${p.numero} para lanzar en bolsa`}
+                      className="rounded w-4 h-4" title="Seleccionar para lanzar en bolsa" />
+                  ) : <span className="w-4" />}
+                </div>
+
+                <div className="row-start-1 col-start-2 lg:row-auto lg:col-auto min-w-0">
+                  <button type="button" onClick={() => setExpandedId(isExp ? null : p.id)} aria-expanded={isExp}
+                    className="flex items-center gap-1.5 text-left">
+                    <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${isExp ? 'rotate-180' : ''}`} />
+                    <span className="font-semibold text-sm text-primary dark:text-white tabular-nums">#{p.numero}</span>
+                    {p.referencia && <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded truncate max-w-[9rem]" title="Referencia / Nº externo">{p.referencia}</span>}
+                  </button>
+                  {p.tipos_pedido?.nombre && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 pl-[1.375rem] truncate">{p.tipos_pedido.nombre}</p>}
+                </div>
+
+                <div className="row-start-2 col-start-2 col-end-4 lg:row-auto lg:col-auto min-w-0">
+                  <p className="text-sm text-gray-800 dark:text-gray-100 truncate flex items-center gap-1.5">
+                    <User size={13} className="text-gray-400 flex-shrink-0" />
+                    <span className={`truncate ${cliente === 'Sin cliente' ? 'text-gray-400 dark:text-gray-500' : ''}`}>{cliente}</span>
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 flex items-center gap-1.5 pl-[1.2rem]">
+                    {nItems} línea{nItems !== 1 ? 's' : ''}
+                    {p.requiere_envio && <><span aria-hidden>·</span><Truck size={12} /> con envío</>}
+                  </p>
+                </div>
+
+                <div className="row-start-3 col-start-2 col-end-4 lg:row-auto lg:col-auto min-w-0">
+                  {p.fecha_entrega_solicitada ? (() => {
                     const urg = urgenciaEntrega(p.fecha_entrega_solicitada, p.estado, hoyStrPed)
                     const env = (p.envios ?? []).find((e: any) => e.rango_horario_desde)
                     const cls = urg === 'atrasado' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                       : urg === 'hoy' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                       : urg === 'manana' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                      : 'text-gray-400'
+                      : ''
                     const etiqueta = urg === 'atrasado' ? 'Atrasado · ' : urg === 'hoy' ? 'Hoy · ' : urg === 'manana' ? 'Mañana · ' : ''
                     return (
-                      <span className={`text-xs flex items-center gap-1 ${urg && urg !== 'proximo' ? `font-semibold px-1.5 py-0.5 rounded ${cls}` : 'text-gray-400'}`}
+                      <span className={`inline-flex items-center gap-1.5 text-xs whitespace-nowrap ${urg && urg !== 'proximo' ? `font-semibold px-2 py-1 rounded-md ${cls}` : 'text-gray-500 dark:text-gray-400'}`}
                         title="Fecha de entrega acordada">
-                        <CalendarClock size={11} />{etiqueta}{fechaEntregaLegible(p.fecha_entrega_solicitada)}
-                        {env && ` ${env.rango_horario_desde}–${env.rango_horario_hasta}`}
+                        <CalendarClock size={12} className="flex-shrink-0" />{etiqueta}{fechaEntregaLegible(p.fecha_entrega_solicitada)}
+                        {env && <span className="font-normal opacity-80">{` ${env.rango_horario_desde}–${env.rango_horario_hasta}`}</span>}
                       </span>
                     )
-                  })()}
-                </button>
-                <span className={`text-xs font-medium px-2 py-1 rounded-full ${badge.cls}`}>{badge.label}</span>
-                {p.estado === 'borrador' && puedeYo('confirmar') && (
-                  <button onClick={() => cambiarEstado.mutate({ pedido: p, nuevoEstado: 'confirmado' })}
-                    disabled={cambiarEstado.isPending}
-                    className="text-xs font-semibold bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
-                    Confirmar
-                  </button>
-                )}
-                {p.estado === 'confirmado' && puedeYo('lanzar') && (() => {
-                  const motivoBloqueo = motivoNoLanzarPedido(p.ventas?.estado)
-                  return (
-                    <button onClick={() => lanzarPedido.mutate(p)}
-                      disabled={lanzarPedido.isPending || !!motivoBloqueo}
-                      title={motivoBloqueo ?? 'Genera las tareas de picking/reabastecimiento en Depósito y reserva el stock'}
-                      className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50">
-                      <Rocket size={13} /> {lanzarPedido.isPending ? 'Lanzando…' : 'Lanzar'}
-                    </button>
-                  )
-                })()}
-                {['en_preparacion', 'listo_para_entrega'].includes(p.estado) && (
-                  <button onClick={() => navigate(`/picking?busqueda=${encodeURIComponent(`Pedido:${p.numero}`)}`)}
-                    className="text-xs font-semibold text-accent-text border border-accent-text/30 px-3 py-1.5 rounded-lg hover:bg-accent/10 transition-colors">
-                    Ver en Picking
-                  </button>
-                )}
-                {p.lanzado_at && (
-                  <button onClick={() => setImprimirPedido(p)}
-                    title="Lista de picking imprimible (fallback si falla el escaneo)"
-                    className="p-2 text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
-                    <Printer size={15} />
-                  </button>
-                )}
-                {/* "Entregar" acá GENERA la venta real. Un pedido nacido de una venta ya la tiene,
-                    así que ese camino está bloqueado server-side (mig 316) para no facturar ni
-                    rebajar dos veces: se entrega desde Ventas → Pedidos. Se oculta el botón en vez
-                    de dejar que el usuario choque contra el guard. */}
-                {['en_preparacion', 'listo_para_entrega', 'entregado_parcial'].includes(p.estado) && puedeYo('entregar') && !p.venta_origen_id && (
-                  <button onClick={() => abrirEntrega(p)}
-                    title="Genera la venta real: rebaja el stock reservado y asienta el cobro en caja"
-                    className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors">
-                    <Truck size={13} /> Entregar
-                  </button>
-                )}
-                {p.venta_origen_id && !['entregado', 'cancelado'].includes(p.estado) && (
-                  p.requiere_envio ? (
-                    <button onClick={() => navigate('/envios')}
-                      title="Este pedido sale por envío: se despacha desde el módulo Envíos"
-                      className="flex items-center gap-1.5 text-xs font-semibold text-accent-text border border-accent-text/30 px-3 py-1.5 rounded-lg hover:bg-accent/10 transition-colors">
-                      <Truck size={13} /> Ver en Envíos
-                    </button>
-                  ) : (
-                    <button onClick={() => navigate('/ventas?tab=pedidos')}
-                      title="Este pedido ya tiene su venta: lo entrega el mostrador desde Ventas → Pedidos"
-                      className="flex items-center gap-1.5 text-xs font-semibold text-accent-text border border-accent-text/30 px-3 py-1.5 rounded-lg hover:bg-accent/10 transition-colors">
-                      <Truck size={13} /> Entregar en mostrador
-                    </button>
-                  )
-                )}
-                {p.estado === 'entregado_parcial' && (
-                  <button onClick={() => cerrarPedido.mutate(p)} disabled={cerrarPedido.isPending}
-                    title="Cierra el pedido si ya se entregó el 100% de las líneas"
-                    className="text-xs font-semibold text-gray-500 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50">
-                    Cerrar pedido
-                  </button>
-                )}
-                {p.estado === 'en_preparacion' && puedeYo('deslanzar') && (
-                  <button onClick={async () => { if (await confirmar(`¿Deshacer el lanzamiento del pedido #${p.numero}? Se liberan las reservas de stock (solo si nada se pickeó todavía).`, { danger: true })) deslanzarPedido.mutate(p) }}
-                    disabled={deslanzarPedido.isPending}
-                    title="Vuelve a Confirmado y libera lo reservado — solo si ninguna tarea se completó todavía"
-                    className="text-xs font-semibold text-amber-600 border border-amber-300 dark:border-amber-800 px-3 py-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors disabled:opacity-50">
-                    Deshacer lanzamiento
-                  </button>
-                )}
-                {/* A5: si el pedido ya generó una venta ACTIVA, fn_cancelar_pedido bloquea con un
-                    mensaje claro — hay que devolverla primero desde Ventas → Historial (link en
-                    el detalle expandido, abajo). Una vez devuelta/cancelada, esto sí cancela. */}
-                {p.estado !== 'cancelado' && puedeYo('cancelar') && (
-                  <button
-                    onClick={async () => { if (await confirmar(`¿Cancelar el pedido #${p.numero}?${p.lanzado_at ? ' Se liberan las reservas de stock (solo si nada se pickeó todavía).' : ''}`, { danger: true })) cancelarPedido.mutate(p) }}
-                    disabled={cancelarPedido.isPending}
-                    className="text-xs text-red-500 hover:text-red-600 px-2 py-1.5 disabled:opacity-50">
-                    Cancelar
-                  </button>
-                )}
+                  })() : <span className="text-xs text-gray-400 dark:text-gray-500 hidden lg:inline">Sin fecha</span>}
+                </div>
+
+                <div className="row-start-1 col-start-3 lg:row-auto lg:col-auto flex flex-col items-end lg:items-start gap-1">
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap ${badge.cls}`}>{badge.label}</span>
+                  {nota && <span className="hidden lg:flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400" title={nota.detalle}><Info size={11} />{nota.corta}</span>}
+                </div>
+
+                <div className="row-start-4 col-start-1 col-end-4 lg:row-auto lg:col-auto flex items-center justify-end gap-2 pt-1 lg:pt-0">
+                  {nota && <span className="lg:hidden mr-auto flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400" title={nota.detalle}><Info size={11} />{nota.corta}</span>}
+                  {principal}
+                  {menu.length > 0 ? <ActionMenu compact label={`Más acciones del pedido #${p.numero}`} items={menu} /> : <span className="w-9" />}
+                </div>
               </div>
+
               {isExp && (
-                <div className="px-5 pb-4 space-y-1.5">
-                  {(p.pedido_items ?? []).map((it: any) => (
-                    <div key={it.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 flex-wrap">
-                      <span className="font-medium">{it.productos?.nombre}</span>
-                      <span className="text-gray-400">{it.productos?.sku}</span>
-                      <span>· {Number(it.cantidad)} {it.productos?.unidad_medida ?? 'u'}</span>
-                      {Number(it.cantidad_entregada ?? 0) > 0 && (
-                        <span className={Number(it.cantidad_entregada) >= Number(it.cantidad) ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}>
-                          ({Number(it.cantidad_entregada)} entregado{Number(it.cantidad_entregada) >= Number(it.cantidad) ? '' : ` — faltan ${Number(it.cantidad) - Number(it.cantidad_entregada)}`})
-                        </span>
-                      )}
-                      {[it.talle, it.color, it.encaje, it.formato, it.sabor_aroma].filter(Boolean).length > 0 && (
-                        <span className="text-gray-400">({[it.talle, it.color, it.encaje, it.formato, it.sabor_aroma].filter(Boolean).join(' · ')})</span>
-                      )}
+                <div className="panel-in px-4 pb-5 pt-1 lg:pl-[3.25rem] grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+                  <section>
+                    <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Productos</h3>
+                    <div className="rounded-lg border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700">
+                      {(p.pedido_items ?? []).map((it: any) => {
+                        const cant = Number(it.cantidad)
+                        const entregado = Number(it.cantidad_entregada ?? 0)
+                        const variante = [it.talle, it.color, it.encaje, it.formato, it.sabor_aroma].filter(Boolean).join(' · ')
+                        return (
+                          <div key={it.id} className="flex items-baseline gap-3 px-3 py-2 text-sm">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-gray-800 dark:text-gray-100 truncate">{it.productos?.nombre}</p>
+                              <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{it.productos?.sku}{variante && ` · ${variante}`}</p>
+                            </div>
+                            <div className="text-right tabular-nums whitespace-nowrap">
+                              <p className="text-gray-800 dark:text-gray-100">{cantidadConUnidad(cant, it.productos?.unidad_medida)}</p>
+                              {entregado > 0 && (
+                                <p className={`text-xs ${entregado >= cant ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                  {entregado >= cant ? 'Entregado' : `${entregado} entregado · faltan ${cant - entregado}`}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                  ))}
-                  {p.notas && <p className="text-xs text-gray-400 italic pt-1">{p.notas}</p>}
-                  {(ventasPedidoExp as any[]).length > 0 && (
-                    <div className="pt-2 border-t border-gray-100 dark:border-gray-700 mt-2 space-y-1">
-                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Ventas generadas</p>
-                      {(ventasPedidoExp as any[]).map(v => (
-                        <div key={v.id} className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                          <span>Venta #{v.numero} · {v.estado} · ${Number(v.total).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                          {!['devuelta', 'cancelada'].includes(v.estado) && (
-                            <button onClick={() => navigate(`/ventas?id=${v.id}&devolver=1`)}
-                              className="text-accent-text underline ml-auto">
-                              Devolver esta venta
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {p.lanzado_at && (
-                    <div className="pt-2 border-t border-gray-100 dark:border-gray-700 mt-2 space-y-1">
-                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Tareas de Depósito</p>
-                      {tareasPedidoExp.length === 0 ? (
-                        <p className="text-xs text-gray-400">Cargando…</p>
-                      ) : (tareasPedidoExp as any[]).map(t => (
-                        <div key={t.id} className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                            t.estado === 'completada' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : t.estado === 'cancelada' ? 'bg-gray-100 text-gray-400 dark:bg-gray-700'
-                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
-                            {t.tipo === 'replenishment' ? 'Reabastecimiento' : 'Picking'} · {t.estado}
-                          </span>
-                          <span>{t.productos?.nombre} ({Number(t.cantidad)})</span>
-                          {/* Mig 300: fn_unpick_tarea_wms ya soporta tareas encadenadas a un
-                              reabastecimiento (fallback por producto+ubicación cuando el LPN
-                              exacto ya no existe ahí) — "Deshacer" ya no se oculta para esas. */}
-                          {t.tipo === 'picking' && t.estado === 'completada' && puedeYo('deslanzar') && (
-                            <button onClick={() => setUnpickModal(t)}
-                              className="text-red-500 hover:text-red-600 underline ml-auto">
-                              Deshacer
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                    {p.notas && <p className="text-sm text-gray-500 dark:text-gray-400 italic mt-3">{p.notas}</p>}
+                    {!['entregado', 'cancelado'].includes(p.estado) && (
+                      <label className="mt-3 inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+                        <input type="checkbox" className="rounded"
+                          checked={p.acepta_entrega_parcial ?? parcialDefaultNegocio}
+                          onChange={async e => {
+                            const v = e.target.checked
+                            const { error } = await supabase.from('pedidos').update({ acepta_entrega_parcial: v }).eq('id', p.id)
+                            if (error) { toast.error(error.message); return }
+                            logActividad({ entidad: 'pedido', entidad_id: p.id, entidad_nombre: `Pedido #${p.numero}`, accion: 'editar',
+                              campo: 'acepta_entrega_parcial', valor_anterior: p.acepta_entrega_parcial == null ? null : String(p.acepta_entrega_parcial), valor_nuevo: String(v), pagina: '/pedidos' })
+                            qc.invalidateQueries({ queryKey: ['pedidos'] })
+                          }} />
+                        El cliente acepta entregas parciales
+                        {p.acepta_entrega_parcial == null && <span className="text-gray-400 dark:text-gray-500">(default del negocio)</span>}
+                      </label>
+                    )}
+                  </section>
+
+                  <div className="space-y-5">
+                    {p.lanzado_at && (
+                      <section>
+                        <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Tareas de Depósito</h3>
+                        {tareasPedidoExp.length === 0 ? (
+                          <p className="text-xs text-gray-400">Cargando…</p>
+                        ) : (
+                          <ul className="space-y-1.5">
+                            {(tareasPedidoExp as any[]).map(t => (
+                              <li key={t.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap ${
+                                  t.estado === 'completada' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                  : t.estado === 'cancelada' ? 'bg-gray-100 text-gray-400 dark:bg-gray-700'
+                                  : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                                  {t.tipo === 'replenishment' ? 'Reabastecimiento' : 'Picking'} · {t.estado}
+                                </span>
+                                <span className="truncate">{t.productos?.nombre} ({Number(t.cantidad)})</span>
+                                {/* Mig 300: fn_unpick_tarea_wms ya soporta tareas encadenadas a un
+                                    reabastecimiento (fallback por producto+ubicación cuando el LPN
+                                    exacto ya no existe ahí) — "Deshacer" ya no se oculta para esas. */}
+                                {t.tipo === 'picking' && t.estado === 'completada' && puedeYo('deslanzar') && (
+                                  <button onClick={() => setUnpickModal(t)}
+                                    className="ml-auto text-red-500 hover:text-red-600 hover:underline">
+                                    Deshacer
+                                  </button>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </section>
+                    )}
+                    {(ventasPedidoExp as any[]).length > 0 && (
+                      <section>
+                        <h3 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Ventas generadas</h3>
+                        <ul className="space-y-1.5">
+                          {(ventasPedidoExp as any[]).map(v => (
+                            <li key={v.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                              <span>Venta #{v.numero} · {v.estado}</span>
+                              <span className="tabular-nums">${Number(v.total).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                              {!['devuelta', 'cancelada'].includes(v.estado) && (
+                                <button onClick={() => navigate(`/ventas?id=${v.id}&devolver=1`)}
+                                  className="text-accent-text hover:underline ml-auto">
+                                  Devolver esta venta
+                                </button>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    )}
+                    {!p.lanzado_at && (ventasPedidoExp as any[]).length === 0 && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500">Las tareas de Depósito aparecen acá cuando el pedido se lanza.</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           )
         })}
-      </div>
-      </>
-      )}
-
-      {tab === 'wms' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Tareas de picking y reabastecimiento pendientes (logística de depósito — no toca ventas ni rebajes).</p>
-            <Link to="/picking" className="flex-shrink-0 text-sm text-accent-text font-medium hover:underline flex items-center gap-1">
-              <ScanBarcode size={14} /> Abrir vista de picking →
-            </Link>
-          </div>
-
-          {loadingWms ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
-          ) : wmsTareas.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
-              <ScanBarcode size={32} className="mx-auto mb-3 opacity-30" />
-              <p>No hay tareas WMS pendientes</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {(wmsTareas as any[]).map(t => {
-                const esReab = t.tipo === 'replenishment'
-                const esArmado = t.tipo === 'armado'
-                const precedente = t.tarea_precedente_id ? (wmsTareas as any[]).find(x => x.id === t.tarea_precedente_id) : null
-                const bloqueada = !!precedente && precedente.estado !== 'completada'
-                return (
-                  <div key={t.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 flex items-center gap-3 flex-wrap">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${esArmado ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : esReab ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                      {esArmado ? 'Armado' : esReab ? 'Reabastecimiento' : 'Picking'}
-                    </span>
-                    <div className="flex-1 min-w-[180px]">
-                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{t.productos?.nombre ?? '—'} <span className="text-xs text-gray-400 font-normal">{t.productos?.sku}</span></p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {esArmado
-                          ? (t.ubicacion_destino?.nombre ? `Destino: ${t.ubicacion_destino.nombre}` : 'Sin ubicación de destino')
-                          : (t.ubicacion_origen?.nombre ?? 'sin ubicación') + (esReab && t.ubicacion_destino ? ` → ${t.ubicacion_destino.nombre}` : '')}
-                        {t.envios?.numero ? ` · Envío #${t.envios.numero}` : ''}{t.lpn_origen ? ` · LPN ${t.lpn_origen}` : ''}
-                      </p>
-                    </div>
-                    {puedeAsignarTareas ? (
-                      <select value={t.usuario_asignado_id ?? ''} onChange={e => asignarTareaWms(t, e.target.value || null)}
-                        className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 dark:text-gray-200 flex-shrink-0"
-                        title="Asignar tarea a un operario">
-                        <option value="">Sin asignar</option>
-                        {(usuariosAsignables as any[]).map(u => (
-                          <option key={u.id} value={u.id}>{u.nombre_display ?? u.rol}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
-                        {t.usuario_asignado?.nombre_display ? `Asignada a ${t.usuario_asignado.nombre_display}` : 'Sin asignar'}
-                      </span>
-                    )}
-                    <button onClick={() => completarTareaWms(t)} disabled={bloqueada || completandoWms === t.id}
-                      title={bloqueada ? 'Esperando que se complete el reabastecimiento' : undefined}
-                      className="flex-shrink-0 bg-accent hover:bg-accent/90 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
-                      {completandoWms === t.id ? '...' : 'Completar'}
-                    </button>
-                    <button onClick={() => cancelarTareaWms(t)} disabled={completandoWms === t.id}
-                      title="Cancelar tarea"
-                      className="flex-shrink-0 text-gray-400 hover:text-red-500 disabled:opacity-50 p-1.5">
-                      <X size={16} />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          )}
         </div>
+      </div>
+
+      {/* Lanzar en bolsa: barra flotante mientras haya pedidos tildados. */}
+      {bolsaSeleccion.size > 0 && puedeYo('lanzar') && (
+        <div className="barra-in sticky bottom-4 z-20 flex justify-center pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-gray-900 dark:bg-gray-700 text-white pl-4 pr-2 py-2 shadow-[0_12px_32px_-8px_rgb(15_23_42/0.45)]">
+            <span className="text-sm"><span className="font-semibold tabular-nums">{bolsaSeleccion.size}</span> pedido{bolsaSeleccion.size !== 1 ? 's' : ''} para lanzar</span>
+            <button onClick={() => setBolsaModalOpen(true)}
+              className="flex items-center gap-1.5 text-sm font-semibold bg-accent text-white px-3.5 py-2 rounded-xl hover:bg-accent/90 transition-[background-color,transform] duration-150 active:scale-[0.97]">
+              <Layers size={14} /> Lanzar en bolsa
+            </button>
+            <button onClick={() => setBolsaSeleccion(new Set())} aria-label="Quitar la selección"
+              className="p-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-colors"><X size={15} /></button>
+          </div>
+        </div>
+      )}
+      </>
       )}
 
       {/* Modal nuevo pedido */}
@@ -1351,6 +1332,10 @@ export default function PedidosPage() {
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                 <input type="checkbox" checked={requiereEnvio} onChange={e => setRequiereEnvio(e.target.checked)} className="rounded" />
                 Requiere envío (si no, es retiro en local — no se toca el módulo Envíos)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="checkbox" checked={aceptaParcial} onChange={e => setAceptaParcial(e.target.checked)} className="rounded" />
+                El cliente acepta entregas parciales (si no, se entrega todo junto cuando esté pickeado)
               </label>
 
               {/* Buscador de productos */}
@@ -1447,6 +1432,31 @@ export default function PedidosPage() {
                 Esto genera la venta real (rebaja el stock reservado, asienta el cobro en caja). La factura
                 se emite después, desde Ventas → Historial, igual que cualquier otra venta.
               </p>
+              <label className="flex items-start gap-2.5 rounded-xl border border-gray-200 dark:border-gray-700 p-3 cursor-pointer">
+                <input type="checkbox" checked={entregaParcial} className="rounded mt-0.5"
+                  onChange={e => {
+                    const v = e.target.checked
+                    setEntregaParcial(v)
+                    // Volver a "completa" repone todo lo pendiente (no se puede entregar menos sin pedirlo).
+                    if (!v) {
+                      const cants: Record<string, string> = {}
+                      for (const it of entregaModal.pedido_items ?? []) {
+                        if (it.estado === 'cancelada') continue
+                        const pend = Number(it.cantidad) - Number(it.cantidad_entregada ?? 0)
+                        if (pend > 0) cants[it.id] = String(pend)
+                      }
+                      setEntregaCantidades(cants)
+                    }
+                  }} />
+                <span>
+                  <span className="block text-sm font-medium text-gray-800 dark:text-gray-100">Entrega parcial (lo pidió el cliente)</span>
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">
+                    {entregaParcial
+                      ? 'Cargá cuánto se lleva de cada producto: puede ser hasta lo que ya se pickeó. Lo demás queda pendiente.'
+                      : 'Se entrega todo lo pendiente junto, con el picking terminado.'}
+                  </span>
+                </span>
+              </label>
               <div className="space-y-2">
                 {(entregaModal.pedido_items ?? []).filter((it: any) => it.estado !== 'cancelada').map((it: any) => {
                   const pendiente = Number(it.cantidad) - Number(it.cantidad_entregada ?? 0)
@@ -1455,10 +1465,12 @@ export default function PedidosPage() {
                     <div key={it.id} className="flex items-center gap-2 text-sm border border-gray-200 dark:border-gray-700 rounded-xl p-2.5">
                       <span className="flex-1 truncate">{it.productos?.nombre} <span className="text-xs text-gray-400">({pendiente} pendiente{pendiente !== 1 ? 's' : ''})</span></span>
                       <input type="number" min="0" max={pendiente} step="0.01"
+                        readOnly={!entregaParcial} aria-readonly={!entregaParcial}
+                        title={entregaParcial ? undefined : 'Para entregar menos, marcá "Entrega parcial"'}
                         value={entregaCantidades[it.id] ?? ''}
                         onChange={e => setEntregaCantidades(prev => ({ ...prev, [it.id]: e.target.value }))}
                         onWheel={e => e.currentTarget.blur()}
-                        className={`${inputCls} max-w-[90px]`} />
+                        className={`${inputCls} max-w-[90px] ${entregaParcial ? '' : 'bg-gray-50 dark:bg-gray-900/40 text-gray-500'}`} />
                     </div>
                   )
                 })}

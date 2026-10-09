@@ -8,12 +8,19 @@ updated: 2026-10-08
 
 # Ventas / POS
 
+> 🛑 **2026-10-08 (🟡 DEV, va en v1.240.5) — El carrito toma el stock de la sucursal activa.** `agregarProducto` traía los LPN
+> del producto de todas las sucursales (de ahí salen el LPN del carrito y el tope de cantidad); el registro de la venta siempre
+> filtró, así que nunca se descontó stock ajeno. Mig 482: vencimiento con año de 4 dígitos. e2e 190, UAT §110.
+
+> 💵 **2026-10-08 — Pendiente agendado (semana del 12/10):** el selector de moneda al lado de cada medio de pago (el medio pierde
+> la moneda; máx. 2 monedas por venta; vuelto en ARS) → [[wiki/business/plan-multimoneda-medios-de-pago]]. Hoy rige "Efectivo USD".
+
 > 🧾 **2026-10-08 (✅ EN PROD v1.240.3, PR #381) — El envío en los tickets.** El ticket de la pantalla ya mostraba "Envío" y el
 > TOTAL con envío (verificado con e2e 188 en venta y reserva; la reserva #50 de El Tilo tenía el dato bien). Arreglado:
 > - Ticket por **WhatsApp/link** (`ticketPDF`, `/c/<código>`) y por **mail** (al cliente y el automático al dueño): salían sin el
 >   envío y con un TOTAL menor al cobrado → `lineasEnvioTicket()` + total/saldo de `resumenPagoTicket()` (`src/lib/pedidoVenta.ts`).
 > - **Datos de la entrega** en el ticket (pantalla y WhatsApp/link): transporte + n° de envío y fecha/horario
->   (`lineasEntregaTicket`, query `envio-ticket`). El mail todavía no los incluye.
+>   (`lineasEntregaTicket`, query `envio-ticket`). El mail también desde v1.240.4 (EF `send-email`, campo `entrega`).
 > - **Modal "¿Emitir comprobante?"**: mostraba y usaba para el umbral de la Factura B el total SIN envío (la EF sí lo suma) →
 >   `totalFacturable` = total + envío. UAT §104.
 

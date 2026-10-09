@@ -61,6 +61,32 @@ export function normalizarDestinatarios(to: unknown, max: number): Resultado<str
   return { ok: true, valor: lista }
 }
 
+/** Dominio de los usuarios sin correo (`usuarios-sin-correo`): esas direcciones no reciben nada. */
+export const DOMINIO_USUARIOS_INTERNOS = 'u.genesis360.pro'
+
+/** Un mail al que tiene sentido mandar: válido y que no sea la dirección interna de un usuario sin correo. */
+export function esMailEntregable(email: string | null | undefined): email is string {
+  if (!email || !EMAIL_RE.test(email)) return false
+  return !email.toLowerCase().endsWith('@' + DOMINIO_USUARIOS_INTERNOS)
+}
+
+/**
+ * `to_user_ids`: la app pide mandar a usuarios del negocio por su id, y la EF resuelve el mail en el servidor.
+ * La tabla `users` NO tiene mail (vive en `auth.users`): pedirlo desde la app daba 400 y los avisos de caja nunca
+ * salían. Solo para `notificacion` pedida por un usuario; el filtro por negocio lo hace la EF.
+ */
+export function validarIdsUsuarios(tipo: string, llamador: Llamador, ids: unknown, max = 20): Resultado<string[]> {
+  if (tipo !== 'notificacion' || llamador !== 'usuario') {
+    return { ok: false, status: 400, error: 'to_user_ids solo se acepta para notificaciones de la app.' }
+  }
+  if (!Array.isArray(ids)) return { ok: false, status: 400, error: 'to_user_ids tiene que ser una lista.' }
+  const lista = [...new Set(ids.map((v) => String(v ?? '').trim()).filter(Boolean))]
+  if (lista.length === 0) return { ok: false, status: 400, error: 'Falta el destinatario.' }
+  if (lista.length > max) return { ok: false, status: 400, error: `Demasiados destinatarios (máximo ${max}).` }
+  if (lista.some((id) => !UUID_RE.test(id))) return { ok: false, status: 400, error: 'Destinatario inválido.' }
+  return { ok: true, valor: lista }
+}
+
 /** A quién se manda, según el tipo y quién llama. */
 export function destinatariosSegunTipo(
   tipo: string, llamador: Llamador, toPedido: unknown, emailUsuario: string | null,

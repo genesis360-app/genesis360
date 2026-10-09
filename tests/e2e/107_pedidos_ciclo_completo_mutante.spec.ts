@@ -110,7 +110,7 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
     expect(pedidoPostLanzar.estado).toBe('en_preparacion')
 
     // ── Completar el reabastecimiento vía UI (/picking) — mismo mecanismo que el spec 106 ──
-    await goto(page, '/picking')
+    await goto(page, '/picking?tab=picking')
     await waitForApp(page)
     const cardReab = page.getByTestId(`tarea-${tareaReabId}`)
     const cardPicking = page.getByTestId(`tarea-${tareaPickId}`)
@@ -482,6 +482,26 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
       expect(sesion, '[107] no se encontró ninguna caja abierta tras garantizarCajaAbierta').toBeTruthy()
       sesionId = sesion.id
 
+      // ── Mig 484: con el picking pendiente NO se entrega (antes quedaban tareas vivas en la cola) ──
+      const conPickingPendienteRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_pedido_generar_venta`, {
+        headers, data: {
+          p_pedido_id: pedido.id, p_sesion_caja_id: sesion.id,
+          p_medio_pago: [{ tipo: 'Cuenta Corriente', monto: null }],
+        },
+      })
+      expect(conPickingPendienteRes.ok(), '[107] MIG 484: entregar con el picking pendiente debe RECHAZARSE').toBe(false)
+      expect(await conPickingPendienteRes.text(), '[107] el mensaje debe decir que falta el picking').toMatch(/Falta completar el picking/i)
+
+      // Se completa el picking (misma RPC que /picking) para seguir con el caso del límite de CC.
+      const tareasRes = await request.get(`${SUPABASE_URL}/rest/v1/wms_tareas?pedido_id=eq.${pedido.id}&estado=in.(pendiente,en_curso)&select=id,tipo`, { headers })
+      const tareas = (await tareasRes.json()) as Array<{ id: string; tipo: string }>
+      expect(tareas.length, '[107] lanzar el pedido debe haber generado tareas de picking').toBeGreaterThan(0)
+      for (const t of [...tareas].sort((a, b) => (a.tipo === 'replenishment' ? -1 : 1) - (b.tipo === 'replenishment' ? -1 : 1))) {
+        const rpc = t.tipo === 'replenishment' ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
+        const r = await request.post(`${SUPABASE_URL}/rest/v1/rpc/${rpc}`, { headers, data: { p_tarea_id: t.id } })
+        expect(r.ok(), `[107] ${rpc} falló: ${await r.text()}`).toBe(true)
+      }
+
       // ── Intento bloqueado: CC deja la deuda ($500) muy por encima del límite ($100) ──────
       const entregaBloqueadaRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_pedido_generar_venta`, {
         headers, data: {
@@ -544,6 +564,116 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
       if (clienteId) await request.delete(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${clienteId}`, { headers })
       await request.patch(`${SUPABASE_URL}/rest/v1/tenants?id=eq.${tenantId}`, { headers, data: { cc_enforcement_politica: politicaOriginal } })
       void sesionId // la sesión de caja es del tenant (fixture compartida vía garantizarCajaAbierta), no se borra acá
+    }
+  })
+
+  // Mig 485 (decisión de GO): por default un pedido se entrega COMPLETO; parcial solo si se pide, y sale
+  // solo lo pickeado. Pedido con 2 productos, se pickea solo uno.
+  test('Entrega parcial (mig 485): completa por default; parcial solo con lo pickeado', async ({ page, request }) => {
+    test.setTimeout(90000)
+    const ts = Date.now()
+    await goto(page, '/dashboard')
+    await waitForApp(page)
+    const headers = restHeaders(await tokenDesdeBrowser(page))
+    const [suc] = (await (await request.get(`${SUPABASE_URL}/rest/v1/sucursales?select=id,tenant_id&limit=1`, { headers })).json()) as Array<{ tenant_id: string }>
+    const tenantId = suc.tenant_id
+    const [tipo] = (await (await request.get(`${SUPABASE_URL}/rest/v1/tipos_pedido?tenant_id=eq.${tenantId}&select=id&limit=1`, { headers })).json()) as Array<{ id: string }>
+
+    const productos: string[] = []
+    let ubicId: string | null = null
+    let pedidoId: string | null = null
+    let sesionId: string | null = null
+    const ventas: string[] = []
+    try {
+      const [ubic] = await (await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
+        headers, data: { tenant_id: tenantId, nombre: `E2E Picking Parcial ${ts}`, tipo_logico: 'picking', disponible_surtido: true, activo: true },
+      })).json()
+      ubicId = ubic.id
+      for (const suf of ['A', 'B']) {
+        const [prod] = await (await request.post(`${SUPABASE_URL}/rest/v1/productos`, {
+          headers, data: { tenant_id: tenantId, nombre: `E2E Parcial ${suf} ${ts}`, sku: `E2E-PARC-${suf}-${ts}`, precio_costo: 50, precio_venta: 100, unidad_medida: 'unidad', activo: true, alicuota_iva: 21 },
+        })).json()
+        productos.push(prod.id)
+        await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
+          headers, data: { tenant_id: tenantId, producto_id: prod.id, lpn: `LPN-E2E-PARC-${suf}-${ts}`, cantidad: 5, ubicacion_id: ubic.id, activo: true },
+        })
+      }
+      const [ped] = await (await request.post(`${SUPABASE_URL}/rest/v1/pedidos`, {
+        headers, data: { tenant_id: tenantId, tipo_pedido_id: tipo.id, cliente_nombre: `E2E Parcial ${ts}`, estado: 'confirmado' },
+      })).json()
+      pedidoId = ped.id
+      const items: Record<string, string> = {}
+      for (const pid of productos) {
+        const [it] = await (await request.post(`${SUPABASE_URL}/rest/v1/pedido_items`, {
+          headers, data: { tenant_id: tenantId, pedido_id: ped.id, producto_id: pid, cantidad: 2 },
+        })).json()
+        items[pid] = it.id
+      }
+      const lanzar = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_generar_tareas_picking_pedido`, { headers, data: { p_pedido_id: ped.id } })
+      expect(lanzar.ok(), `[107] lanzar: ${await lanzar.text()}`).toBe(true)
+
+      // Se pickea SOLO el producto A.
+      const tareas = (await (await request.get(`${SUPABASE_URL}/rest/v1/wms_tareas?pedido_id=eq.${ped.id}&tipo=eq.picking&select=id,producto_id`, { headers })).json()) as Array<{ id: string; producto_id: string }>
+      expect(tareas.length, '[107] lanzar debe generar picking para A y B').toBeGreaterThanOrEqual(2)
+      for (const t of tareas.filter(x => x.producto_id === productos[0])) {
+        const r = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_completar_tarea_picking`, { headers, data: { p_tarea_id: t.id } })
+        expect(r.ok(), `[107] completar picking A: ${await r.text()}`).toBe(true)
+      }
+
+      await garantizarCajaAbierta(page, { caja: 'Caja1' })
+      const [sesion] = await (await request.get(`${SUPABASE_URL}/rest/v1/caja_sesiones?tenant_id=eq.${tenantId}&estado=eq.abierta&select=id&limit=1`, { headers })).json()
+      sesionId = sesion.id
+      const entregar = (entregas: Array<{ pedido_item_id: string; cantidad: number }> | null, parcial: boolean | null) =>
+        request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_pedido_generar_venta`, {
+          headers, data: { p_pedido_id: ped.id, p_sesion_caja_id: sesion.id, p_medio_pago: [{ tipo: 'Efectivo', monto: null }], p_entregas: entregas, p_permitir_parcial: parcial },
+        })
+
+      // 1 · Default (completa) con el picking de B pendiente → rechaza.
+      const r1 = await entregar(null, null)
+      expect(r1.ok(), '[107] 485: completa con picking pendiente debe rechazarse').toBe(false)
+      expect(await r1.text()).toMatch(/Falta completar el picking/)
+
+      // 2 · Completa (parcial = false) cargando solo A → rechaza (también por el picking de B pendiente).
+      const r2 = await entregar([{ pedido_item_id: items[productos[0]], cantidad: 2 }], false)
+      expect(r2.ok()).toBe(false)
+
+      // 3 · Parcial pidiendo B (no pickeado) → rechaza: "se pickearon 0".
+      const r3 = await entregar([{ pedido_item_id: items[productos[1]], cantidad: 1 }], true)
+      expect(r3.ok(), '[107] 485: parcial no puede llevar lo que no se pickeó').toBe(false)
+      expect(await r3.text()).toMatch(/se pickearon 0/)
+
+      // 4 · Parcial con A (pickeado) → OK; el pedido queda "entregado parcial" y la tarea de B sigue viva.
+      const r4 = await entregar([{ pedido_item_id: items[productos[0]], cantidad: 2 }], true)
+      expect(r4.ok(), `[107] 485: parcial con lo pickeado debe pasar: ${await r4.text()}`).toBe(true)
+      ventas.push((await r4.json()) as string)
+      const [pedTras] = await (await request.get(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${ped.id}&select=estado`, { headers })).json()
+      expect(pedTras.estado).toBe('entregado_parcial')
+      const vivas = (await (await request.get(`${SUPABASE_URL}/rest/v1/wms_tareas?pedido_id=eq.${ped.id}&estado=in.(pendiente,en_curso)&select=id`, { headers })).json()) as unknown[]
+      expect(vivas.length, '[107] la tarea de B sigue pendiente para la próxima entrega').toBeGreaterThan(0)
+
+      // 5 · Otra parcial con A → rechaza: ya se entregó todo lo pickeado de A.
+      const r5 = await entregar([{ pedido_item_id: items[productos[0]], cantidad: 1 }], true)
+      expect(r5.ok()).toBe(false)
+    } finally {
+      for (const v of ventas) {
+        await request.delete(`${SUPABASE_URL}/rest/v1/movimientos_stock?venta_id=eq.${v}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/venta_item_despachos?venta_id=eq.${v}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/venta_items?venta_id=eq.${v}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${v}`, { headers })
+      }
+      if (pedidoId) {
+        const [p] = (await (await request.get(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${pedidoId}&select=numero`, { headers })).json()) as Array<{ numero: number }>
+        if (sesionId && p) await request.delete(`${SUPABASE_URL}/rest/v1/caja_movimientos?sesion_id=eq.${sesionId}&concepto=eq.Pedido%20%23${p.numero}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/wms_tareas?pedido_id=eq.${pedidoId}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/pedido_items?pedido_id=eq.${pedidoId}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${pedidoId}`, { headers })
+      }
+      for (const pid of productos) {
+        await request.delete(`${SUPABASE_URL}/rest/v1/inventario_lineas?producto_id=eq.${pid}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/alertas?producto_id=eq.${pid}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/productos?id=eq.${pid}`, { headers })
+      }
+      if (ubicId) await request.delete(`${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${ubicId}`, { headers })
     }
   })
 })

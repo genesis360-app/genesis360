@@ -2425,7 +2425,7 @@ tenía el mismo hueco. El resto (~300 pedidos raros) era basura de los e2e (113 
 | 117.3 | Envío → despachado / en camino / entregado con la venta reservada → rechazo (trigger) | ✅ mig 495 |
 | 117.4 | Retiro sin caja abierta → no entrega (la finalización exige caja), con mensaje | ✅ código |
 | 117.5 | e2e 113 borra sus ventas, pedidos, envíos y tareas al terminar | ✅ verificado (0 ventas tras correrlo) |
-| 117.6 | Datos de DEV: finalizar ventas de los pedidos #20/#68, cerrar envíos 13-15 y limpiar la basura e2e | ⏳ pendiente de autorización de GO (escritura directa en la base) |
+| 117.6 | Datos de DEV: ventas de los pedidos #20/#68 (las finalizó y facturó GO), envíos 13-15 entregados, basura e2e limpia (250 ventas/pedidos de prueba borrados, 52 cerrados) | ✅ 09/10 (autorizado por GO; 0 anomalías restantes, 0 LPN descuadrados) |
 
 ## 🚫 §116 — Un pedido entregado (total o en parte) no se cancela ni se des-pickea (migs 492-493, 🟡 DEV) — 2026-10-09
 

@@ -33,12 +33,10 @@ type: project
 > - Pedidos → "Ver en Envíos" abre `/envios?envio=<id>` (e2e 193) · Landing: foto nueva de Gastón Otranto + cargos "Co-Founder & CTO" / "Co-Founder & CEO".
 > - Tests: 2.289 unit; e2e nuevos 191-196; regresión 28 specs: 45 passed / 3 skipped.
 >
-> **🧹 DEV Almacén Jorgito — correcciones de datos PENDIENTES de autorización de GO** (el modo automático rechazó la
-> escritura directa en la base): (1) finalizar las ventas #448 y #503 (pedidos #20 y #68, entregados con la venta reservada;
-> pagadas; reserva anotada en LPN-20260619-24B551) — o GO aprieta "Finalizar" en cada venta; (2) cerrar los envíos 13, 14 y 15
-> (ventas facturadas 220/222/224 de junio, "Envío propio" pendientes); (3) limpiar ~300 pedidos de prueba de los e2e (venta sin
-> usuario o de E2E Tester): confirmado+venta cancelada 33, entregado+venta reservada 38 (liberar reservas), listo+venta
-> despachada 228. La causa de (3) ya está corregida (e2e 113 limpia; mig 495). UAT §117.
+> **✅ DEV Almacén Jorgito — datos corregidos (09/10, autorizado por GO):** GO finalizó y facturó las ventas #448/#503
+> (pedidos #20/#68); envíos 13-15 marcados entregados; basura de los e2e: 250 ventas/pedidos de prueba sin rastro de stock ni
+> fiscal BORRADOS (reservas liberadas), 52 con movimientos de stock CERRADOS (pedido entregado + envíos), 0 anomalías y 0 LPN
+> descuadrados. La causa ya no se repite (e2e 113 limpia; mig 495). UAT §117.
 >
 > **📌 ANOTADO POR GO (09/10) — mañana o la semana que viene:**
 > 1. **Webhooks MercadoLibre / TiendaNube → modelo de reservas** (`meli-webhook` ~278-295 y `tn-webhook` ~453-480 reservan con

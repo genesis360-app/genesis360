@@ -462,12 +462,21 @@ export default function FacturacionPage() {
           tipo_comprobante: tipoComprobante,
           punto_venta:      puntoVenta,
           ...(emisorModalId ? { emisor_id: emisorModalId } : {}),
+          cliente_envia_email: true,
         },
       })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
 
       toast.success(`✅ Factura ${tipoComprobante} emitida — CAE: ${data.cae}`)
+      const ventaEmitidaId = ventaAFacturar.id
+      // Mail al cliente CON la factura en PDF (reporte de GO 09/10: el que mandaba la EF salía sin adjunto). Lo manda el
+      // navegador con el mismo envío que "Enviar por email"; la EF no manda el suyo (cliente_envia_email).
+      void (async () => {
+        const { data: vc } = await supabase.from('ventas').select('clientes(email)').eq('id', ventaEmitidaId).maybeSingle()
+        const em = String((vc as any)?.clientes?.email ?? '').trim()
+        if (em) await enviarFacturaEmail(ventaEmitidaId, em)
+      })()
       qc.invalidateQueries({ queryKey: ['ventas-sin-cae'] })
       qc.invalidateQueries({ queryKey: ['facturas-emitidas'] })
       qc.invalidateQueries({ queryKey: ['facturacion-kpis'] })

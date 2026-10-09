@@ -50,6 +50,9 @@ serve(async (req) => {
       punto_venta = 1,
       devolucion_id,           // presente solo al emitir NC
       emisor_id: bodyEmisorId, // multi-CUIT (F5): override explícito del emisor (opcional)
+      // true = el navegador manda el mail al cliente CON el PDF adjunto (v1.242.1); acá no se manda el aviso sin adjunto.
+      // Un front viejo no lo manda → se sigue mandando el de acá (nadie se queda sin aviso durante el deploy).
+      cliente_envia_email = false,
     } = await req.json()
 
     const esNC = tipo_comprobante.startsWith('NC-')
@@ -652,7 +655,7 @@ serve(async (req) => {
 
     // 10. Email al cliente (fire-and-forget — solo para facturas, no NC)
     const emailCliente = cliente?.email
-    if (emailCliente && !esNC) {
+    if (emailCliente && !esNC && !cliente_envia_email) {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
       fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',

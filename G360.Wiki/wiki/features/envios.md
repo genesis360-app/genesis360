@@ -10,6 +10,8 @@ updated: 2026-10-08
 
 > 📦 **2026-10-09 (✅ EN PROD v1.241.0, mig 484):** un envío entregado confirma los pickings pendientes del pedido y cancela sus reabastecimientos; Ventas → Retiro filtra por sucursal activa. Ver [[wiki/features/pedidos]].
 
+> 📦 **2026-10-09 (✅ EN PROD v1.242.0, mig 495; UAT §117):** trigger `trg_envio_exige_venta_finalizada`: un envío no pasa a despachado / en camino / entregado si su venta sigue RESERVADA (hay que finalizarla; Retiro "Entregado" la finaliza solo). Ver [[wiki/features/pedidos]].
+
 > 🐛 **2026-10-08 (✅ EN PROD v1.241.0, commit `d5b43d72`):** `courier-api` pedía `clientes.documento` (no existe; los campos son `dni` /
 > `cuit_receptor`) → la **etiqueta del courier salía con destinatario "Cliente" y sin datos**. Corregido y desplegado en DEV; hay 6
 > envíos por courier en PROD (`courier-api` desplegada en PROD con v1.241.0). Ver [[wiki/architecture/edge-functions]].

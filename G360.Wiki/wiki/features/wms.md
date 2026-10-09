@@ -8,7 +8,7 @@ updated: 2026-10-09
 
 # WMS — Warehouse Management System
 
-> 🟡 **2026-10-09 (DEV v1.242.0, migs 489-491; sin PROD; UAT §111):** **picking por la sucursal dueña del LPN** (Globales): la tarea la ve y completa B (`wms_tareas.sucursal_id`), A ve el avance en solo lectura (`fn_pedido_tareas_detalle`, `fn_pedidos_de_mis_tareas`), `fn_pedido_marcar_listo` SECURITY DEFINER, B pickea y A entrega. Ver [[wiki/features/pedidos]] y [[wiki/features/inventario-stock]].
+> ✅ **2026-10-09 (EN PROD v1.242.0, migs 489-491; UAT §111):** **picking por la sucursal dueña del LPN** (Globales): la tarea la ve y completa B (`wms_tareas.sucursal_id`), A ve el avance en solo lectura (`fn_pedido_tareas_detalle`, `fn_pedidos_de_mis_tareas`), `fn_pedido_marcar_listo` SECURITY DEFINER, B pickea y A entrega. Ver [[wiki/features/pedidos]] y [[wiki/features/inventario-stock]].
 
 > 🎨 **2026-10-09 (✅ EN PROD v1.241.0, UAT §113) — Picking unificado.** La página Picking tiene dos pestañas: **"Tareas"** (ex Pedidos → Tareas WMS, mudada en v1.161.0; ahora `src/components/wms/TareasWmsPanel.tsx`: vista por pedido —colapsada por defecto, abierta si viene con filtro— o por tarea, selección por tarea y por pedido, asignar/completar/cancelar en masa, buscador `src/lib/wmsTareasFiltro.ts`) y **"Picking"** (vista del operario). Pedidos ya no tiene la tab Tareas WMS; "Ver en Picking" abre `/picking?busqueda=Pedido:N` con ambas filtradas. Las menciones a "Tareas WMS dentro de Pedidos" más abajo son históricas. Mig 484: el envío entregado confirma pickings pendientes y cancela reabastecimientos. Ver [[wiki/features/pedidos]].
 

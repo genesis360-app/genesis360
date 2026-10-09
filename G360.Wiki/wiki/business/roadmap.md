@@ -8,19 +8,21 @@ updated: 2026-10-09
 
 # Roadmap y Versiones
 
-**Versión en PROD (actual): `v1.241.0`** (🟡 DEV adelante: `v1.242.0`, migs 001-495, pendiente de deploy) (2026-10-09, PR #383: Pedidos rediseñado + Picking unificado + entrega parcial, migs 482-486). Antes: `v1.239.3` (2026-10-06, PR #377: prueba gratis de 30 días, mig 476). Antes: `v1.239.2` (2026-10-06, PR #376: landing sin testimonios inventados + copiar link del portal). Antes: `v1.239.1` (2026-10-06, PR #375: Portal de Proveedores — reenviar acceso y crear/recuperar contraseña). Antes: `v1.239.0` (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
+**Versión en PROD (actual): `v1.242.0`** (PROD = DEV, migs 001-495) (2026-10-09, PR #384: caja entre sucursales, reserva atada a la venta, ubicaciones Globales, pedidos entregados, migs 487-495). Antes: `v1.241.0` (2026-10-09, PR #383: Pedidos rediseñado + Picking unificado + entrega parcial, migs 482-486). Antes: `v1.239.3` (2026-10-06, PR #377: prueba gratis de 30 días, mig 476). Antes: `v1.239.2` (2026-10-06, PR #376: landing sin testimonios inventados + copiar link del portal). Antes: `v1.239.1` (2026-10-06, PR #375: Portal de Proveedores — reenviar acceso y crear/recuperar contraseña). Antes: `v1.239.0` (2026-10-06, migs 001-**475**, archivos y bases iguales). Compute de
 PROD: **Micro** desde el 2026-09-15 (antes Nano). Clientes reales en PROD: **Kalken** y, desde el 2026-09-28, **El Tilo**
 (Madera Carrizo, factura en producción).
 
-✅ **PROD = DEV** (001-486 desde v1.241.0; antes 001-475; deploy de v1.239.0 el 2026-10-06: PR **#371**, merge `85760295`; `pg_policies` DEV = PROD por schema). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
+✅ **PROD = DEV** (001-495 desde v1.242.0; 001-486 desde v1.241.0; antes 001-475; deploy de v1.239.0 el 2026-10-06: PR **#371**, merge `85760295`; `pg_policies` DEV = PROD por schema). Antes: v1.238.0 (PR **#370**, merge `8be5f1fb`).
 
-## 🌐 v1.242.0 — Caja entre sucursales, reserva atada a la venta, ubicaciones Globales, pedidos entregados (2026-10-09, 🟡 EN DEV, pendiente de deploy)
+## 🌐 v1.242.0 — Caja entre sucursales, reserva atada a la venta, ubicaciones Globales, pedidos entregados (2026-10-09, ✅ EN PROD, PR #384)
 
 - **Mig 487:** cambiar de sucursal con la caja abierta (avisa); cajas solo de la sucursal activa en POS/Pedidos/Clientes/Cobranzas CC/RRHH/Proveedores; WITH CHECK de `sesiones_tenant`/`mov_caja_tenant` = USING.
 - **Mig 488 (🛑 no aditiva-segura, va con su front):** reserva atada a la venta (`venta_item_reservas`, `fn_venta_reservar_linea`/`liberar`/`consumir`); arregla liberar/descontar reservas ajenas al anular o despachar.
 - **Migs 489-491:** ubicaciones Globales — stock visible/vendible desde todas las sucursales, venta de A con stock de B por reserva + pedido, picking por la sucursal dueña, A entrega; config `pos_permite_cambiar_lpn`.
 - **Migs 492-493:** un pedido entregado no se cancela ni se des-pickea. Pedidos → "Ver en Envíos" filtra por el envío exacto. Landing: foto y cargos de los fundadores.
-- Tests: 2.289 unit; e2e 191-196; regresión 28 specs 45 passed / 3 skipped. UAT §111, §114-§116. Migs 487-495 SOLO DEV; sin tag ni release hasta el deploy (falta autorización de GO).
+- **Migs 494-495:** 494 saca el EXECUTE de `fn_venta_reservas_mover_anotacion` a authenticated; 495 (UAT §117) no deja salir mercadería de una venta reservada (`fn_pedido_entregar_retiro`, trigger `trg_envio_exige_venta_finalizada`; Retiro "Entregado" finaliza la venta). Filtros de Pedidos/Picking con estilo de marca; code-review (reembolso efectivo de devolución a proveedor con cajas de la sucursal activa, aviso si falla el stock, sin doble rebaje al reintentar despacho).
+- Deploy: PR #384, merge `a2c07bc4`, release `v1.242.0` (Latest); migs 487-495 en PROD (backfill 488: 7 ventas / 14 ítems); `pg_policies` idénticas (public 246, storage 40, cron 2). Tests: 56 passed / 4 skipped / 3 intermitentes que pasan solos; 2.289 unit. UAT §111, §114-§117.
+- **v1.242.1 (09/10, EN PROD):** el mail automático de la factura sale CON el PDF (lo manda el navegador; la EF `emitir-factura` saltea el suyo con `cliente_envia_email`). e2e 197. Ver [[wiki/features/facturacion-afip]].
 
 ## 🎨 v1.241.0 — Pedidos rediseñado, Picking unificado, entrega parcial opcional (2026-10-09, EN PROD)
 

@@ -6,19 +6,43 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-09, cierre) — 🟡 **DEV adelante de PROD: `v1.242.0` LISTA EN DEV, sin deploy** (migs 487-495 solo DEV)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-09, cierre para /clear) — 🚀 **PROD = DEV = `v1.242.0`** (migs 001-**495**)
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.241.0` (PR #383, merge `8873c36b`, release Latest) | 001-**486** |
-> | **DEV** | `v1.242.0` (`origin/dev`, commits `33443dec..57fb426f`) | 001-**495** (487-495 SOLO DEV) |
+> | **PROD** | `v1.242.0` (PR #384, merge `a2c07bc4c9848d5a2d918e5b61edb34833f96cd6`, release `v1.242.0` Latest; `app.genesis360.pro` sirve el bundle `index-BRheFAcT.js`, verificado con curl) | 001-**495** |
+> | **DEV** | `v1.242.0` (`origin/dev`) | 001-**495** |
 >
-> **Falta:** autorización de GO para el deploy. Al deployar: migs 487-495 a PROD de a una con `scripts/aplicar-migracion.mjs`
-> (🛑 **488 NO es aditiva-segura**: va en el mismo release que su front; su backfill agrega filas en las 7 reservas vivas de PROD,
-> no toca LPN → avisar a GO), PR `dev → main` `v1.242.0 — ...`, release `v1.242.0` (tag y release NO creados aún),
-> `auditar-edge-functions.sh`, hash de `pg_policies` por schema.
+> Migs 487-495 aplicadas en PROD de a una con `scripts/aplicar-migracion.mjs` (versiones 20261009050926 … 20261009050956). Backfill de
+> la 488 en PROD: 7 ventas reservadas / 14 ítems, todos anotados en `venta_item_reservas`; 0 LPN con más anotado que reservado,
+> 0 con reservado > cantidad. `pg_policies` idénticas DEV = PROD: public 246 (`9f259ef9…`), storage 40 (`9dbf0d0a…`), cron 2
+> (`a821294e…`). `auditar-edge-functions.sh` sin drift nuevo (solo `marketplace-webhook` NO_DESPLEGADA en DEV). Sin EFs nuevas ni
+> cambios en `app-reference.md`. Regresión previa: 56 passed / 4 skipped / 3 intermitentes (193, 28, 96) que pasan solos; 2.289 unit.
+> **Sin nada pendiente de deploy.**
 >
-> **✅ Qué trae v1.242.0** (detalle: `log.md` 2026-10-09 update y [[wiki/business/roadmap]]):
+> **👉 PENDIENTES (en orden):**
+> 1. ✅ **RESUELTO EN PROD v1.242.1 (09/10, e2e 197):** el mail de la factura ahora lo manda el navegador CON el PDF tras emitir (si el cliente tiene email); la EF `emitir-factura` no manda el suyo cuando recibe `cliente_envia_email: true` (front viejo → sigue el de la EF). Historia: **El mail AUTOMÁTICO de la factura salía SIN el PDF adjunto** (reporte de GO 09/10, confirmado):
+>    `supabase/functions/emitir-factura/index.ts` ~654-683 llama a `send-email` tipo `factura_emitida` sin `attachments` (el PDF se
+>    genera en el navegador con `generarFacturaPDFBase64`, `src/lib/facturasPDF.ts`). Los envíos MANUALES sí adjuntan
+>    (FacturacionPage ~199-219, VentasPage `enviarFacturaEmail` ~2743 y `enviarNCEmail` ~2860). **Propuesta recomendada (a):** que el
+>    cliente, tras emitir con éxito y si el cliente tiene email, mande el mail con el PDF reutilizando ese código, y sacar el envío
+>    del EF (o b: generar el PDF en el servidor). **Falta OK de GO.** (Fiscal: tocar `emitir-factura` = REGLA #0.)
+> 2. Devolución "Sin devolución monetaria" no funciona (ver con GO; detalle abajo).
+> 3. Webhooks ML/TN → `fn_venta_reservar_linea` / `fn_venta_liberar_reservas` (mañana o la semana que viene; requiere redeploy de EFs en DEV y PROD).
+> 4. Series y pedidos manuales con ubicaciones Globales (más adelante).
+> 5. Siguen: 💵 Multimoneda (semana del 12/10, 5 preguntas antes de la Fase 1) · plan de testing de Config → Notificaciones · confirmar
+>    HS256 revocada en DEV y que `sbp_60df…` no exista · el resto de los pendientes previos (más abajo).
+> 6. 🧪 Nota de testing: el e2e 193 elige el pedido con envío más reciente y es intermitente si otro spec del lote crea/borra pedidos
+>    en el medio; 28 y 96 también fallaron una vez en el lote largo y pasaron solos.
+>
+> **También entró en v1.242.0 (EN PROD):** mig **494** (`fn_venta_reservas_mover_anotacion` sin EXECUTE para authenticated; code-review);
+> mig **495** (UAT §117: no sale mercadería de una venta RESERVADA — `fn_pedido_entregar_retiro` la rechaza, trigger
+> `trg_envio_exige_venta_finalizada` en `envios`, Ventas → Retiro "Entregado" finaliza la venta reservada en el mismo click; casos
+> #20/#68 de GO); filtros de Pedidos y Picking → Tareas con el estilo de la marca (bg-accent, rounded-xl), Pedidos abre en "Pendiente"
+> (con `?busqueda=` en "Todos"); code-review: reembolso en efectivo de devolución a proveedor solo con cajas de la sucursal activa,
+> queryKey propia de cajas en Gastos (OC), aviso si falla el movimiento de stock, no doble rebaje en reintento de despacho.
+>
+> **✅ Qué trae v1.242.0** (detalle: `log.md` 2026-10-09 deploy y [[wiki/business/roadmap]]):
 > - **Mig 487 — Caja:** cambiar de sucursal con la caja abierta (avisa, ya no bloquea; L4 revisado por GO); cajas solo de la
 >   sucursal activa en POS/Pedidos/Clientes/Cobranzas CC/RRHH/Proveedores; WITH CHECK de `sesiones_tenant`/`mov_caja_tenant` = USING.
 >   e2e 191, UAT §114.
@@ -36,9 +60,10 @@ type: project
 > **✅ DEV Almacén Jorgito — datos corregidos (09/10, autorizado por GO):** GO finalizó y facturó las ventas #448/#503
 > (pedidos #20/#68); envíos 13-15 marcados entregados; basura de los e2e: 250 ventas/pedidos de prueba sin rastro de stock ni
 > fiscal BORRADOS (reservas liberadas), 52 con movimientos de stock CERRADOS (pedido entregado + envíos), 0 anomalías y 0 LPN
-> descuadrados. La causa ya no se repite (e2e 113 limpia; mig 495). UAT §117.
+> descuadrados; ventas de prueba 1528/1530/1534/1536 finalizadas con `fn_venta_consumir_reservas` y la 624 borrada. La causa ya no
+> se repite (e2e 113 limpia con `limpiarVentas` en afterEach; mig 495). UAT §117.
 >
-> **📌 ANOTADO POR GO (09/10) — mañana o la semana que viene:**
+> **📌 ANOTADO POR GO (09/10) — detalle de los pendientes 2-4 de arriba:**
 > 1. **Webhooks MercadoLibre / TiendaNube → modelo de reservas** (`meli-webhook` ~278-295 y `tn-webhook` ~453-480 reservan con
 >    `fn_reservar_stock_linea` sin anotar; `tn-webhook` cancela con `fn_liberar_stock_linea` por `item.linea_id` → pasar a
 >    `fn_venta_reservar_linea` / `fn_venta_liberar_reservas`). Hoy caen en el camino de compatibilidad (sucursal de la venta,
@@ -63,7 +88,7 @@ type: project
 > resuelto por la mig 488; el diseño completo vive en [[wiki/features/inventario-stock]] y [[wiki/features/wms]].
 >
 
-> ### (Previo) ARRANCÁ ACÁ (2026-10-09, para /clear) — 🚀 **PROD = DEV = `v1.241.0`** (migs 001-**486**)
+> ### (Previo, superado por v1.242.0 EN PROD) ARRANCÁ ACÁ (2026-10-09, para /clear) — 🚀 **PROD = DEV = `v1.241.0`** (migs 001-**486**)
 >
 > | | Código | Migraciones |
 > |---|---|---|

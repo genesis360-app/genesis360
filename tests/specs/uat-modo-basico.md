@@ -2411,6 +2411,15 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
+## 📧 §118 — El mail de la factura al cliente lleva el PDF (v1.242.1) — 2026-10-09
+
+| # | Escenario | Estado |
+|---|---|---|
+| 118.1 | Emitir una factura (Ventas o Facturación) con cliente con email → le llega el mail CON la factura en PDF | ✅ e2e 197 |
+| 118.2 | La EF no manda además su aviso sin adjunto (no llegan dos mails) | ✅ e2e 197 (`cliente_envia_email`) |
+| 118.3 | Cliente sin email → no se manda nada | ✅ código |
+| 118.4 | Front viejo (sin el flag) → la EF sigue mandando el aviso | ✅ código |
+
 ## 📦 §117 — No sale mercadería de una venta reservada: Retiro finaliza la venta (mig 495, 🟡 DEV) — 2026-10-09
 
 Reporte de GO (DEV, Almacén Jorgito): pedidos entregados "raros" y entregas facturadas que no cerraban. Diagnóstico: Ventas →

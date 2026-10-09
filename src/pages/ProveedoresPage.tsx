@@ -363,10 +363,12 @@ export default function ProveedoresPage() {
   })
 
   const { data: cajasAbiertasProv = [] } = useQuery({
-    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    // Clave propia ('proveedores' al final): no compartir caché con el POS, que pide otro select.
+    queryKey: ['caja-sesiones-abiertas', tenant?.id, sucursalId, 'proveedores'],
     queryFn: async () => {
-      const { data } = await supabase.from('caja_sesiones')
-        .select('id, cajas(nombre)').eq('tenant_id', tenant!.id).is('cerrada_at', null)
+      // Solo las cajas de la sucursal activa (GO 2026-10-08), igual que el POS.
+      const { data } = await applyFilter(supabase.from('caja_sesiones')
+        .select('id, cajas(nombre)').eq('tenant_id', tenant!.id).is('cerrada_at', null))
       return data ?? []
     },
     enabled: !!ccProvId,

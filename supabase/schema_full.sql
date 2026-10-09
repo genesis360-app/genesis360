@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-08T23:00:20.470Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261008230013 · 178 tablas
+-- Generado 2026-10-09T02:31:12.556Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261009015258 · 178 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -17223,10 +17223,12 @@ CREATE POLICY mov_caja_tenant ON public.caja_movimientos AS PERMISSIVE FOR ALL T
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sesion_id IS NULL) OR (EXISTS ( SELECT 1
    FROM caja_sesiones s
   WHERE ((s.id = caja_movimientos.sesion_id) AND ((s.sucursal_id IS NULL) OR (s.sucursal_id = auth_user_sucursal()))))))))
-  WITH CHECK ((tenant_id = get_user_tenant_id()));
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sesion_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM caja_sesiones s
+  WHERE ((s.id = caja_movimientos.sesion_id) AND ((s.sucursal_id IS NULL) OR (s.sucursal_id = auth_user_sucursal()))))))));
 CREATE POLICY sesiones_tenant ON public.caja_sesiones AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
-  WITH CHECK ((tenant_id = get_user_tenant_id()));
+  WITH CHECK (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))));
 CREATE POLICY caja_traspasos_delete_gestion ON public.caja_traspasos AS PERMISSIVE FOR DELETE TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text, 'SUPER_USUARIO'::text]))));
 CREATE POLICY caja_traspasos_insert ON public.caja_traspasos AS PERMISSIVE FOR INSERT TO public

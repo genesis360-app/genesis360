@@ -793,12 +793,15 @@ export default function VentasPage() {
 
   // Caja abierta
   const { data: sesionesAbiertas = [] } = useQuery({
-    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    queryKey: ['caja-sesiones-abiertas', tenant?.id, sucursalId, 'pos'],
     queryFn: async () => {
-      const { data } = await supabase.from('caja_sesiones')
+      // Solo las cajas de la sucursal activa (GO 2026-10-08): quien ve todas puede cambiar de sucursal con su caja
+      // abierta, y un cobro hecho acá no puede caer en la caja de otra sucursal. La sesión vive en la sucursal de su
+      // caja (mig 460).
+      const { data } = await applyFilter(supabase.from('caja_sesiones')
         .select('id, caja_id, moneda, cajas(nombre, moneda, es_caja_fuerte)')
         .eq('tenant_id', tenant!.id)
-        .eq('estado', 'abierta')
+        .eq('estado', 'abierta'))
       // Excluir la sesión permanente de la Caja Fuerte/Bóveda: en la venta solo se
       // cobra en cajas operativas. (Además, si no, con 1 sola caja real `length` sería
       // 2 y no autopreseleccionaría la única caja abierta.)
@@ -887,15 +890,17 @@ export default function VentasPage() {
     return sesion?.id ?? null
   }, [sesionesArs, cajaPrefKey, userCajaPreferidaId])
 
-  // sesión efectiva: selección explícita del user > caja preferida > única abierta
-  const sesionCajaId = cajaSeleccionadaId
+  // sesión efectiva: selección explícita del user > caja preferida > única abierta.
+  // La selección explícita cuenta solo si sigue en la lista (de la sucursal activa): al cambiar de sucursal con la caja
+  // abierta (GO 2026-10-08) no puede quedar apuntando a la caja de la otra, ni siquiera en el render previo al reset.
+  const sesionCajaId = (cajaSeleccionadaId && sesionesArs.some(s => s.id === cajaSeleccionadaId) ? cajaSeleccionadaId : null)
     ?? cajaPreferidaSesionId
     ?? (sesionesArs.length === 1 ? sesionesArs[0].id : null)
 
   // G5 Fase 4 (D3) — mismo patrón para la Caja USD: selector propio, solo relevante si hay un
   // medio "efectivo USD" con monto > 0 (ver más abajo, mediosEfectivoUsd).
   const [cajaSeleccionadaUsdId, setCajaSeleccionadaUsdId] = useState<string | null>(null)
-  const sesionCajaUsdId = cajaSeleccionadaUsdId
+  const sesionCajaUsdId = (cajaSeleccionadaUsdId && sesionesUsd.some(s => s.id === cajaSeleccionadaUsdId) ? cajaSeleccionadaUsdId : null)
     ?? (sesionesUsd.length === 1 ? sesionesUsd[0].id : null)
 
   // Si la selección explícita ya no es válida (caja cerrada, etc.), resetearla
@@ -999,7 +1004,7 @@ export default function VentasPage() {
       const { aplicado, cajaRegistrada, requiereCaja } = await cobrarDeudaCCFIFO(supabase, {
         tenantId: tenant!.id, clienteId, monto, metodo: cobrarCCMetodo,
         usuarioId: user?.id, clienteNombre: clienteNombre || null,
-        sesionCajaId, cuentaOrigenId: cuentaOrigenDeMetodo(cobrarCCMetodo),
+        sesionCajaId, cuentaOrigenId: cuentaOrigenDeMetodo(cobrarCCMetodo), sucursalId,
       })
       if (requiereCaja) {
         toast.error('Abrí una caja antes de cobrar en efectivo: si no, el pago no quedaría registrado en ningún arqueo.', { duration: 7000 })

@@ -110,7 +110,7 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 }
 
 export default function ClientesPage() {
-  const { tenant, user } = useAuthStore()
+  const { tenant, user, sucursalId } = useAuthStore()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const qc = useQueryClient()
   const confirmar = useConfirm()
@@ -354,11 +354,14 @@ export default function ClientesPage() {
   const [retirando, setRetirando] = useState(false)
 
   const { data: cajasRetiro = [] } = useQuery({
-    queryKey: ['cajas-abiertas-retiro', tenant?.id],
+    queryKey: ['cajas-abiertas-retiro', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('caja_sesiones')
+      // Solo las cajas de la sucursal activa (GO 2026-10-08), igual que el POS.
+      let q = supabase.from('caja_sesiones')
         .select('id, cajas(nombre, es_caja_fuerte)')
         .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
       return (data ?? []).filter((s: any) => !s.cajas?.es_caja_fuerte)
         .map((s: any) => ({ id: s.id, nombre: s.cajas?.nombre ?? 'Caja' }))
     },
@@ -617,7 +620,7 @@ ${detalle}`,
       const nomb = (clientesCC as any[]).find(c => c.id === clienteId)?.nombre ?? 'cliente'
       const { aplicado, requiereCaja } = await cobrarDeudaCCFIFO(supabase, {
         tenantId: tenant!.id, clienteId, monto, metodo: pagoMetodo,
-        usuarioId: user?.id, clienteNombre: nomb,
+        usuarioId: user?.id, clienteNombre: nomb, sucursalId,
       })
       // Efectivo sin caja imputable: NO se saldó la deuda (el efectivo no tendría arqueo).
       if (requiereCaja) {

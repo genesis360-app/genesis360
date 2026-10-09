@@ -16,7 +16,7 @@ import toast from 'react-hot-toast'
  * Reusa `cobrarDeudaCCFIFO` (mismo flujo que la ficha y el POS).
  */
 export default function CajaCobranzasCC() {
-  const { tenant, user } = useAuthStore()
+  const { tenant, user, sucursalId } = useAuthStore()
   const qc = useQueryClient()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const [cobrarId, setCobrarId] = useState<string | null>(null)
@@ -75,7 +75,7 @@ export default function CajaCobranzasCC() {
       const nomb = conDeuda.find(x => x.id === clienteId)?.nombre ?? 'cliente'
       const { aplicado, requiereCaja } = await cobrarDeudaCCFIFO(supabase, {
         tenantId: tenant!.id, clienteId, monto: m, metodo,
-        usuarioId: user?.id, clienteNombre: nomb,
+        usuarioId: user?.id, clienteNombre: nomb, sucursalId,
       })
       if (requiereCaja) {
         toast.error('Abrí una caja antes de cobrar en efectivo: si no, el pago no quedaría registrado en ningún arqueo.', { duration: 7000 })

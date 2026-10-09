@@ -256,11 +256,16 @@ export default function PedidosPage() {
 
   // ── Cajas abiertas (mismo criterio que VentasPage: excluye la Caja Fuerte) ──────────
   const { data: sesionesAbiertas = [] } = useQuery({
-    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    // Clave propia ('pedidos' al final): el POS usa ['caja-sesiones-abiertas', tenant, sucursal] con OTRO select (trae
+    // la moneda); compartir la clave le servía al POS sesiones sin moneda y una caja USD pasaba por ARS.
+    queryKey: ['caja-sesiones-abiertas', tenant?.id, sucursalId, 'pedidos'],
     queryFn: async () => {
-      const { data } = await supabase.from('caja_sesiones')
+      // Solo las cajas de la sucursal activa (GO 2026-10-08), igual que el POS.
+      let q = supabase.from('caja_sesiones')
         .select('id, caja_id, cajas(nombre, es_caja_fuerte)')
         .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
       return (data ?? []).filter((s: any) => !s.cajas?.es_caja_fuerte)
     },
     enabled: !!tenant && !!entregaModal,

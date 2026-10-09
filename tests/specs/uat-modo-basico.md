@@ -2411,7 +2411,7 @@ Fase 2 del plan (`plan_categorias_clientes_y_precio_programado.md`). Reglas de F
 | 74.8 | Ficha del cliente con CUIT (11 dígitos) y sin DNI: se guarda ("DNI (opcional: tiene CUIT)"); sin CUIT el DNI sigue obligatorio | unit `dniObligatorioEnFicha` · e2e `164` (B: guarda la empresa sin DNI) | ✅ |
 | 74.9 | 🛑 DNI vacío nunca se guarda como '' (índice único): ficha, POS e importador → NULL (trigger mig 444); dos clientes sin DNI en el mismo negocio conviven | SQL en DEV ('' y '   ' → NULL, ' 30123456 ' → '30123456', ROLLBACK) | ✅ |
 
-## 🚫 §116 — Un pedido entregado (total o en parte) no se cancela (mig 492, 🟡 DEV) — 2026-10-09
+## 🚫 §116 — Un pedido entregado (total o en parte) no se cancela ni se des-pickea (migs 492-493, 🟡 DEV) — 2026-10-09
 
 Reporte de GO: el menú de Pedidos ofrecía "Cancelar pedido" también en entregado / entregado parcial, y la base solo
 rechazaba 'entregado' (un 'entregado_parcial' se cancelaba al aprobar la solicitud). Verificado: 0 casos en PROD y DEV.
@@ -2421,6 +2421,8 @@ rechazaba 'entregado' (un 'entregado_parcial' se cancelaba al aprobar la solicit
 | 116.1 | Pedido entregado o entregado en parte → el menú no ofrece "Cancelar pedido" | ✅ código |
 | 116.2 | Aprobar una cancelación de un pedido entregado en parte → la base la rechaza y sugiere "Cerrar pedido" / devolución | ✅ mig 492 |
 | 116.3 | Pedido entregado en parte → "Cerrar pedido" sigue disponible para lo pendiente | ✅ sin cambios |
+| 116.4 | Pedido entregado (o entregado en parte, o de una venta ya despachada) → el detalle no ofrece "Deshacer" en la tarea de picking y la base lo rechaza (mig 493) | ✅ SQL sobre el #553 (rechazo) |
+| 116.5 | Pedido listo con la venta reservada → "Deshacer" sigue funcionando | ✅ SQL sobre el #475 (rollback) |
 
 ## 🔒 §115 — La reserva queda atada a la venta (mig 488, 🟡 DEV) — 2026-10-09 · Fase 0 de §111
 

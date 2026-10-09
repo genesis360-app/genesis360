@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-10-09T03:49:20.292Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20261009034727 · 179 tablas
+-- Generado 2026-10-09T04:01:41.793Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20261009035848 · 179 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -13027,8 +13027,16 @@ BEGIN
 
   SELECT * INTO v_pedido FROM pedidos WHERE id = v_tarea.pedido_id FOR UPDATE;
   IF v_pedido.id IS NULL THEN RAISE EXCEPTION 'Pedido inexistente'; END IF;
-  IF v_pedido.estado IN ('entregado', 'cancelado') THEN
-    RAISE EXCEPTION 'El pedido ya está % — no se puede deshacer el picking', v_pedido.estado;
+  -- Mig 493: solo con el pedido en preparación o listo (antes se podía en 'entregado_parcial': lo pickeado pudo haberse
+  -- entregado) y con la venta de origen todavía sin despachar (despachada/facturada = el stock ya salió: lo que se "devolvía"
+  -- salía de la reserva de OTRA venta del mismo LPN).
+  IF v_pedido.estado NOT IN ('en_preparacion', 'listo_para_entrega') THEN
+    RAISE EXCEPTION 'El pedido está % — ya no se puede deshacer el picking (una devolución va por Ventas → Devolución)',
+      replace(v_pedido.estado, '_', ' ');
+  END IF;
+  IF v_pedido.venta_origen_id IS NOT NULL AND EXISTS (
+       SELECT 1 FROM ventas v WHERE v.id = v_pedido.venta_origen_id AND v.estado IN ('despachada', 'facturada')) THEN
+    RAISE EXCEPTION 'La venta de este pedido ya se despachó: el stock ya salió y no se puede deshacer el picking';
   END IF;
 
   v_restante := v_tarea.cantidad;

@@ -1227,7 +1227,10 @@ export default function PedidosPage() {
                                     reabastecimiento (fallback por producto+ubicación cuando el LPN
                                     exacto ya no existe ahí) — "Deshacer" ya no se oculta para esas.
                                     Mig 490: la tarea de otra sucursal se ve en solo lectura (la deshace esa sucursal). */}
+                                {/* Mig 493: solo con el pedido vivo y la venta sin despachar (entregado = el stock ya salió). */}
                                 {t.tipo === 'picking' && t.estado === 'completada' && puedeYo('deslanzar')
+                                  && ['en_preparacion', 'listo_para_entrega'].includes(p.estado)
+                                  && !['despachada', 'facturada'].includes(p.ventas?.estado)
                                   && (puedeVerTodas || !t.sucursal_id || t.sucursal_id === sucursalId) && (
                                   <button onClick={() => setUnpickModal(t)}
                                     className="ml-auto text-red-500 hover:text-red-600 hover:underline">

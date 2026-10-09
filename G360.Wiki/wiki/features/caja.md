@@ -8,7 +8,7 @@ updated: 2026-10-08
 
 # Módulo Caja
 
-> 🐛 **2026-10-08 (🟡 DEV, commit `d5b43d72`, va en v1.240.5; UAT §112):** `users` no tiene columna `email` (vive en `auth.users`)
+> 🐛 **2026-10-08 (✅ EN PROD v1.241.0, commit `d5b43d72`; UAT §112):** `users` no tiene columna `email` (vive en `auth.users`)
 > y `CajaPage` la pedía en 4 selects → PostgREST 400 silencioso. Consecuencia: los avisos in-app y los mails de **diferencia de
 > apertura** y de **diferencia de cierre**, y el mail de cierre al DUEÑO, **nunca salieron**; "Abrir caja a nombre de" quedaba
 > vacío. Fix: se saca `email` de los selects y los mails van por `send-email` con `to_user_ids` (resuelto en el servidor: solo tipo

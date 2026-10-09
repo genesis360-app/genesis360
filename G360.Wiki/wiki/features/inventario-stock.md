@@ -8,7 +8,7 @@ updated: 2026-10-08
 
 # Inventario y Stock
 
-> 📅 **2026-10-08 (🟡 DEV, mig 482):** la base rechaza vencimientos con año de más de 4 dígitos (la comparación de vencimientos
+> 📅 **2026-10-08 (✅ EN PROD v1.241.0, mig 482):** la base rechaza vencimientos con año de más de 4 dígitos (la comparación de vencimientos
 > como texto daba "20207-04-04" por vencido); los inputs de vencimiento tienen `max="9999-12-31"`. Pedido de GO en borrador:
 > picking multisucursal con ubicaciones Globales (UAT §111, a definir — choca con "inventario por sucursal estricto").
 

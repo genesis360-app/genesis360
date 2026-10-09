@@ -3,10 +3,12 @@ title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging, pildoras, buscador]
 sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, 351, 360, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts, src/lib/pedidosFiltro.ts]
-updated: 2026-08-31
+updated: 2026-10-09
 ---
 
 # Módulo Pedidos
+
+> 🎨 **2026-10-09 (✅ EN PROD v1.241.0, migs 484-486; UAT §113) — Pedidos rediseñado, entrega parcial opcional y Picking unificado.** UI: ancho completo, columnas Pedido/Cliente/Entrega/Estado/Próximo paso, un botón de acción por fila + menú ⋯, filtros de estado con cantidad, detalle en 2 columnas, barra flotante de bolsa. **Pedidos ya no tiene la pestaña "Tareas WMS"** (el texto histórico de más abajo describe cómo era): pasó a Picking → "Tareas" ([[wiki/features/wms]]); "Ver en Picking" abre `/picking?busqueda=Pedido:N`. Reglas: **484** no se entrega con picking/reabastecimiento pendiente (el envío entregado confirma pickings y cancela reabastecimientos); **485** entrega PARCIAL solo si se pide (`tenants.pedido_entrega_parcial_default` en Config → Pedidos, `pedidos.acepta_entrega_parcial` NULL=hereda, `p_permitir_parcial`) y en parcial sale solo lo pickeado; **486** "Confirmado" se muestra "Pendiente" y el pedido de una venta ya despachada/facturada nace `listo_para_entrega` (trigger `trg_ventas_despachada_pedido_listo`). En modo básico (sin tareas de picking) la parcial no tiene tope (decisión consciente). Ver [[wiki/database/migraciones]].
 
 > 📅 **2026-10-03 (✅ EN PROD v1.238.0, mig 465) — el pedido hereda la fecha de entrega del envío:** Pedidos ordena por fecha (atrasado / hoy / mañana) con el rango horario; Picking muestra la fecha. Se arreglaron las fechas que se veían un día antes y el "hoy" en UTC (Pedidos y Alertas, `hoyLocalISO`). UAT §95, e2e 177. Para después (GO): WMS profesional con priorización de tareas y asignación automática por permisos y vehículo (ver [[wiki/features/wms]]).
 

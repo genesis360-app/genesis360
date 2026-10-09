@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-10-09] deploy | 🚀 v1.241.0 EN PROD — Pedidos rediseñado + Picking unificado + entrega parcial opcional (migs 482-486)
+
+- **PROD = DEV = `v1.241.0`** (migs 001-486). PR **#383**, merge `8873c36b`, release `v1.241.0` (Latest); Vercel sirve v1.241.0 (verificado con curl al bundle). Migs 482-486 aplicadas en PROD de a una con `scripts/aplicar-migracion.mjs` y verificadas. EFs `send-email`, `courier-api` y `data-api` desplegadas en PROD.
+- **Pedidos/Picking:** Pedidos rediseñado (ancho completo; columnas Pedido/Cliente/Entrega/Estado/Próximo paso; un botón por fila + menú ⋯; filtros con cantidad; detalle 2 columnas; barra flotante de bolsa). Picking unificado con pestañas "Tareas" (ex Pedidos → Tareas WMS: `src/components/wms/TareasWmsPanel.tsx`, vista por pedido colapsada por defecto / por tarea, selección y asignar/completar/cancelar en masa, buscador `src/lib/wmsTareasFiltro.ts`) y "Picking" (operario). "Ver en Picking" abre `/picking?busqueda=Pedido:N`. Pedidos ya no tiene la tab Tareas WMS. Ventas → Retiro filtra por sucursal activa. Diseño con skills impeccable + emil-design-eng + design-taste-frontend.
+- **Mig 484:** `fn_pedido_generar_venta` no entrega con picking/reabastecimiento pendiente; el trigger de envío entregado confirma pickings pendientes y cancela reabastecimientos; data fix (DEV 44, PROD 0).
+- **Mig 485:** entrega PARCIAL solo si se pide: `tenants.pedido_entrega_parcial_default` (Config → Pedidos), `pedidos.acepta_entrega_parcial` (NULL=hereda), `p_permitir_parcial`; en parcial sale solo lo pickeado por producto; completa = picking terminado y todo lo pendiente. Firma nueva (6 params), DROP+CREATE con los mismos grants.
+- **Mig 486:** "Confirmado" se muestra "Pendiente" (solo etiqueta); pedido de venta despachada/facturada nace `listo_para_entrega`; trigger `trg_ventas_despachada_pedido_listo`; data fix PROD 4.
+- **Venían en DEV y llegan a PROD:** mig 482 (vencimiento ≤ 9999-12-31), carrito del POS por sucursal, landing con capturas reales, cartel Efectivo USD; mig 483 + `d5b43d72` (`users.email` inexistente → `send-email` `to_user_ids`; `courier-api` `clientes.documento`; `data-api` `clientes.direccion`; topes diarios del rate limit; test estático de lecturas `.select()`).
+- **Keys de PROD:** legacy apagadas + HS256 revocada (GO, dashboard). Pendiente: confirmar HS256 en DEV y que `sbp_60df…` no exista.
+- UAT §112 y §113 (113.1-113.14). **Pendientes nuevos:** la limpieza del e2e 113 deja pedidos sin venta (DEV ~57 "Pendiente"); `data-api` `updated_since` en clientes/proveedores; parcial sin tareas de picking (modo básico) sin tope (decisión consciente). Siguen: Multimoneda (semana 12/10, 5 preguntas), picking multisucursal Global (UAT §111), cambio de sucursal con caja abierta, plan de testing de Config → Notificaciones.
+
 ## [2026-10-08] update | 🐛 Columnas inexistentes que fallaban en silencio + topes diarios del rate limit (mig 483) + 🔑 keys de PROD rotadas (🟡 `dev`)
 
 - **🔑 Rotación de keys de PROD — HECHA** (config de Supabase, sin código): GO apagó las legacy API keys (anon + service_role) y

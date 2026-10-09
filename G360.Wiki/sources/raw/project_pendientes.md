@@ -6,116 +6,59 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-08, noche, para /clear) — 🚀 **PROD = `v1.240.4`** (migs 001-481) · **DEV adelante: migs 482-483 + 7 commits SIN deploy**
+> ### 🛑 ARRANCÁ ACÁ (2026-10-09, para /clear) — 🚀 **PROD = DEV = `v1.241.0`** (migs 001-**486**)
 >
 > | | Código | Migraciones |
 > |---|---|---|
-> | **PROD** | `v1.240.4` (PR #382) | 001-**481** |
-> | **DEV** | `origin/dev` = `v1.240.4` + commits nuevos (APP_VERSION **todavía v1.240.4**: bumpear a **v1.240.5** al deployar) | 001-**483** |
+> | **PROD** | `v1.241.0` (PR #383, merge `8873c36b`, release Latest; Vercel sirve v1.241.0, verificado con curl al bundle) | 001-**486** |
+> | **DEV** | `v1.241.0` (`origin/dev`) | 001-**486** |
 >
-> **En `dev`, listo para PROD (falta OK de GO):**
-> - 🖼️ **Landing con capturas reales** de Almacén Jorgito: hero (POS Coca Cola 1.5L + Yerba, ticket $4.157, Panel → Insights) y
->   bento (LPN, Caja1 vista celular, Factura C con CAE —CUIT tapado y sin QR—, cobro mixto). Herramienta
->   `tests/e2e/990_capturas_landing.spec.ts` (`CAPTURAS_LANDING=1`). Ver [[wiki/business/plan-landing-2]].
-> - 💵 Cartel de "Efectivo USD" en Config → Métodos de pago: texto claro + botón "Crear 'Efectivo USD'" (UAT §109). Se elimina con
->   el plan de Multimoneda.
-> - 🛑 **Carrito del POS = stock de la sucursal activa** (`agregarProducto` traía LPN de todas; el registro siempre filtró) + **mig 482**
->   (vencimiento ≤ 9999-12-31, NOT VALID, en `inventario_lineas`/`recepcion_items`/`traslado_items`) + `max` en los inputs. e2e 190
->   (falla sin el fix). UAT §110. **Deploy: mig 482 a PROD antes del merge** (PROD tiene 0 filas fuera de rango).
+> Migs 482-486 aplicadas en PROD de a una con `scripts/aplicar-migracion.mjs` y verificadas. EFs `send-email`, `courier-api` y
+> `data-api` desplegadas en PROD. **Sin nada pendiente de deploy.**
 >
-> - 🐛 **Commit `d5b43d72` — columnas inexistentes + topes diarios** (UAT §112):
->   - `users` NO tiene `email` (vive en `auth.users`) y 5 selects lo pedían (CajaPage x4, RrhhPage x1) → PostgREST 400 silencioso:
->     los avisos in-app y mails de **diferencia de apertura/cierre de caja** y el **mail de cierre al DUEÑO nunca salieron**,
->     "Abrir caja a nombre de" quedaba vacío y RRHH → vincular usuario daba error. Fix: se saca `email` de los selects; los mails van
->     por `send-email` con el parámetro nuevo `to_user_ids` (resuelto en el servidor: solo tipo `notificacion`, solo usuarios activos
->     del mismo tenant, excluye `@u.genesis360.pro`).
->   - `courier-api` pedía `clientes.documento` (no existe; es `dni`/`cuit_receptor`) → la etiqueta salía con destinatario "Cliente" sin
->     datos (6 envíos por courier en PROD). `data-api` pedía `clientes.direccion` (no existe; ahora `direccion:domicilio_fiscal`) →
->     el export de clientes daba 400. Pendiente: `updated_since` en clientes/proveedores falla (esas tablas no tienen `updated_at`;
->     0 API keys activas en PROD).
->   - **Mig 483** `483_rate_limit_ventana_diaria.sql` (DEV, falta PROD): `fn_rate_limit_consumir` aceptaba ventanas de máx 3600 s y
->     `consultar-cuit` (500/día tenant, 5000/día plataforma) y `categoria-cartel-ia` (200/día tenant) usaban 86400 → excepción →
->     fail-open: **los topes diarios nunca se aplicaron**. Ahora máx 86400; el cron `cleanup_rate_limit_contadores` borra con margen de 2 días.
->   - Test estático `lecturasEnFuente` (`src/lib/columnasEscritas.ts` + `tests/unit/columnasEscritas.test.ts`): cruza los 819
->     `.from(t).select('…')` literales contra `schema_full`.
->   - EFs `send-email`, `courier-api`, `data-api` desplegadas SOLO en DEV.
-> - **Deploy v1.240.5:** aplicar **mig 482 Y 483 a PROD antes del merge** (una a una con `scripts/aplicar-migracion.mjs`) y
->   **desplegar a PROD las EFs `send-email`, `courier-api`, `data-api`** (el merge NO despliega EFs; luego `auditar-edge-functions.sh`).
+> **Lo que entró en v1.241.0** (detalle: `log.md` 2026-10-09 y [[wiki/business/roadmap]]):
+> - 🛑 Carrito del POS = stock de la sucursal activa + **mig 482** (vencimiento ≤ 9999-12-31) · 🖼️ landing con capturas reales ·
+>   💵 cartel "Efectivo USD" (UAT §109-§110).
+> - 🐛 **Mig 483** + commit `d5b43d72`: `users.email` no existe (avisos de diferencia de caja, "Abrir a nombre de", RRHH vincular
+>   usuario) → `send-email` `to_user_ids` resuelto en el servidor; `courier-api` `clientes.documento`; `data-api` `clientes.direccion`;
+>   topes diarios de rate limit (ventana ≤ 86400, cleanup 2 días); test estático de lecturas `.select()` (UAT §112).
+> - 📦 **Mig 484** (no se entrega con picking/reabastecimiento pendiente; envío entregado confirma pickings y cancela reabast.;
+>   data fix DEV 44 / PROD 0) · **485** (entrega PARCIAL solo si se pide: `tenants.pedido_entrega_parcial_default` en Config → Pedidos,
+>   `pedidos.acepta_entrega_parcial` NULL=hereda, `p_permitir_parcial`; en parcial sale solo lo pickeado) · **486** ("Confirmado" se
+>   muestra "Pendiente"; pedido de venta despachada/facturada nace `listo_para_entrega`; trigger
+>   `trg_ventas_despachada_pedido_listo`; data fix PROD 4).
+> - 🎨 **Pedidos rediseñado** (ancho completo, un botón por fila + menú ⋯, filtros con cantidad, detalle 2 columnas, barra flotante
+>   de bolsa) y **Picking unificado**: pestañas "Tareas" (ex Pedidos → Tareas WMS, `TareasWmsPanel.tsx`, vista por pedido / por
+>   tarea, acciones en masa, buscador `wmsTareasFiltro.ts`) y "Picking" (operario); "Ver en Picking" abre
+>   `/picking?busqueda=Pedido:N`. Ventas → Retiro filtra por sucursal activa. UAT §112 y §113 (113.1-113.14).
+> - 🔑 **Keys de PROD:** legacy apagadas + HS256 revocada (GO, dashboard); ES256 Current.
 >
 > **👉 LO PRÓXIMO:**
-> 1. **Deploy v1.240.5** con lo de arriba (pedir OK; salir del modo automático).
-> 2. ~~🔑 Terminar rotación de keys de PROD~~ ✅ **HECHO 08/10 noche** (ver abajo). Queda: confirmar la revocación de la HS256 en
->    **DEV** y que el token viejo `sbp_60df…` ya no exista.
-> 3. 💵 **📅 Semana del 12/10: Multimoneda — el medio de pago pierde la moneda** → [[wiki/business/plan-multimoneda-medios-de-pago]]
+> 1. 💵 **📅 Semana del 12/10: Multimoneda — el medio de pago pierde la moneda** → [[wiki/business/plan-multimoneda-medios-de-pago]]
 >    (hacerle a GO las 5 preguntas abiertas antes de la Fase 1).
-> 4. 🧪 Plan de testing de Configuración → Notificaciones.
+> 2. 🧪 Plan de testing de Configuración → Notificaciones.
+> 3. 🔑 Confirmar la revocación de la HS256 en **DEV** y que el token viejo `sbp_60df…` no exista.
 >
-> **🔑 Rotación de keys de PROD — ✅ HECHA (08/10 noche, config de Supabase, no es código):** GO apagó las legacy API keys (anon +
-> service_role) y revocó la JWT signing key HS256 ("Previously used") desde el dashboard de PROD; **ES256 sigue como Current**. Login
-> real OK (sesión e incógnito); logs del gateway: 0 respuestas 401 posteriores. Antes: 7 días con 0 usos de keys legacy. Pendiente:
-> revocar/confirmar la HS256 en DEV y confirmar que el token `sbp_60df…` no existe.
+> **🧹 Pendientes menores nuevos:**
+> - La limpieza del e2e 113 deja pedidos sin venta (DEV ~57 "Pendiente" sin venta).
+> - `data-api`: `updated_since` en clientes/proveedores falla (sin `updated_at`; 0 API keys activas en PROD).
+> - Entrega parcial sin tareas de picking (modo básico): no tiene tope (decisión consciente).
 >
 > **🙋 Esperando decisión de GO:**
 > - 🌐 **Picking multisucursal con ubicaciones Globales** (UAT §111, borrador): choca con "inventario por sucursal estricto".
->   Preguntas: (a) ¿el stock de una ubicación Global es de todas las sucursales o de la que lo cargó? (b) vender stock de B desde
->   A ¿traslado B→A o venta de A con stock de B? (c) ¿quién ve la tarea de picking de la ubicación Global?
-> - 💰 **Cambiar de sucursal con caja abierta**: el bloqueo es solo de pantalla (L4, pensado para el cajero). Propuesta: el DUEÑO
->   y roles con "ver todas" cambian sin cerrar; POS/Caja solo ofrecen cajas de la sucursal activa (hoy el POS lista las de TODAS)
->   + guard en la base (venta y caja de la misma sucursal); el cajero sigue bloqueado.
+>   (a) ¿el stock de una ubicación Global es de todas las sucursales o de la que lo cargó? (b) vender stock de B desde A ¿traslado
+>   B→A o venta de A con stock de B? (c) ¿quién ve la tarea de picking de la ubicación Global?
+> - 💰 **Cambiar de sucursal con caja abierta**: el bloqueo es solo de pantalla (L4). Propuesta: DUEÑO y roles con "ver todas"
+>   cambian sin cerrar; POS/Caja solo ofrecen cajas de la sucursal activa + guard en la base; el cajero sigue bloqueado.
 >
-> **🧑‍💼 Datos que corrige GO (DEV):** Almacén de la Suerte — LPN-20260514-713198 (600 u. ALM-0022, Flores) con vencimiento
-> "20207-04-04" y otro LPN con "5000-02-20". **El Tilo (PROD):** mover el LPN-20261002-EAEE20 antes de borrar "Escobar-Leandro".
+> **🧑‍💼 Datos que corrige GO:** Almacén de la Suerte (DEV) — LPN-20260514-713198 con vencimiento "20207-04-04" y otro LPN con
+> "5000-02-20". **El Tilo (PROD):** mover el LPN-20261002-EAEE20 antes de borrar "Escobar-Leandro" (sucursal oficina → Inventario →
+> Mover). Contador: 25 consultas abiertas (`npm run contador:doc`). Presupuestos de proveedores: sin A1, A2 y B1 no arranca.
 >
-> ### (antes) ARRANCÁ ACÁ (2026-10-08, cierre para /clear) — 🚀 **PROD = DEV = `v1.240.4`** (migs 001-**481**)
->
-> | | Código | Migraciones | Policies |
-> |---|---|---|---|
-> | **PROD** | `v1.240.4` (PR #382, merge `a7ee65c6`, release Latest; servida verificada con curl) | 001-**481** | public 245 · storage 40 · cron 2 |
-> | **DEV** | `v1.240.4` (`origin/dev`, `d579dd6f` + docs) | 001-**481** (la 479 y la 480 quedaron registradas 2 veces por correcciones; en PROD una) | = PROD |
->
-> **Lo que entró hoy (v1.240.3 + v1.240.4):** envío en los tickets (pantalla ya lo mostraba; WhatsApp/link/mail + datos de la
-> entrega + modal de factura con el total con envío), cheques propios atómicos (477/479: `revertir_cheque_propio`, contramovimiento
-> en la cuenta, anulado = rechazo), cierre contable deja pagar/cobrar/revertir OCs, gastos y ventas viejas (479/480), CC de
-> proveedores solo por funciones (480, `registrar_nc_proveedor`), `OC-<código>-0070` (478), ubicación con stock no cambia de
-> sucursal (481), Inventario/Productos siguen el selector de sucursal, PDF de OC sin costos internos, scroll del landing.
-> UAT §104-§108 · consultas al contador C-23 a C-25 · e2e nuevos 188 y 189.
->
-> **👉 LO PRÓXIMO, en orden (acordado con GO):**
-> 1. 🔑 **Terminar la rotación de keys de PROD** — inventario HECHO el 08/10 (app y panel admin con `sb_publishable_`, cron y
->    funciones sin keys, **0 usos de keys legacy en 7 días** de logs; método de medición nuevo en la memoria
->    `reference_supabase_token_filtrado_sin_rotar`). Con GO despierto: `PUT /v1/projects/jjffnbrdjchquexdfgwq/api-keys/legacy?enabled=false`
->    (reversible) → verificar key vieja 401 / nueva 200 + **login real de GO** → revocar la HS256 en PROD y en DEV (irreversible:
->    confirmar antes). Re-medir los logs antes de apagar.
-> 2. 🖼️ **Landing con capturas reales** del tenant de DEV **Almacén Jorgito** (pedido de GO). Tiene basura de e2e ("E2E …",
->    "ZZ_TEST…", ventas de prueba): elegir pantallas/filtros prolijos o acomodar lo que se ve. Plan: [[wiki/business/plan-landing-2]].
-> 3. 🧪 Plan de testing de Configuración → Notificaciones (pedido de GO 06/10, ver abajo).
-> 4. 💵 **📅 SEMANA DEL 12/10 — Multimoneda: el medio de pago pierde la moneda** (pedido de GO 08/10): selector de moneda al
->    lado de cada medio en la venta. Plan + 5 preguntas abiertas: [[wiki/business/plan-multimoneda-medios-de-pago]]. Arrancar
->    preguntándole a GO las 5 preguntas; después Fase 1 (POS). Hoy sigue el modelo viejo ("Efectivo USD" es necesario).
->
-> 5. 🌐 **Picking multisucursal con ubicaciones Globales** (pedido de GO 08/10, UAT §111 en borrador): choca con "inventario por
->    sucursal estricto". Antes de implementar, GO define: (a) ¿el stock en una ubicación Global es de todas las sucursales o sigue
->    siendo de su sucursal? (b) vender stock de B desde A ¿genera un traslado B→A o es venta de A con stock de B? (c) ¿quién ve
->    la tarea de picking de la ubicación Global? (d) ¿cómo cuadran los reportes de stock/ventas por sucursal?
-> 6. 💰 **Cambiar de sucursal con caja abierta** (pregunta de GO 08/10): el bloqueo es solo de pantalla (L4 del relevamiento de
->    Caja, pensado para el cajero). Riesgo real: el POS lista las cajas abiertas de TODAS las sucursales → cobro registrado en una
->    caja de otra sucursal. Propuesta: dejar cambiar al DUEÑO (y roles con "ver todas") sin cerrar, y que POS/Caja solo ofrezcan
->    cajas de la sucursal activa + guard en la base (venta y caja de la misma sucursal). Espera decisión de GO.
->
-> **🧑‍💼 Para GO / clientes:**
-> - **El Tilo:** para borrar "Escobar-Leandro" primero MOVER el LPN-20261002-EAEE20 (6 Paneles de Caña, sucursal "ELTILO oficina",
->   1 reservado por la #52) a otra ubicación: sucursal oficina en el encabezado → Inventario → Mover. La 481 no corrige el dato
->   viejo (aparece con ⚠). Revisar la #50 desde el Historial (el envío estaba bien guardado). Traslado #1 sigue esperando ubicación
->   en el galpón.
-> - **Contador:** 25 consultas abiertas (`npm run contador:doc`).
-> - **Presupuestos de proveedores:** sin A1, A2 y B1 (GO + Fede) no arranca.
->
-> **⚠️ Recordatorios operativos:**
-> - `SUPABASE_ACCESS_TOKEN` renovado el 08/10 por 90 días (vence ~06/01/2027): al renovarlo, cambiarlo en `.env.local` **y** en el
->   secret de GitHub (si no, falla el backup diario de Storage — pasó el 07/10, reparado el 08/10, run 37737060184 OK).
-> - En **modo automático** Claude Code rechaza solo todo lo que sea deploy a PROD: GO tiene que salir del modo (Shift+Tab).
-> - Quedan abiertos: gastos sueltos pagados con cheque no guardan su movimiento de caja (al rechazar se avisa revisar la cuenta);
->   `marketplace-webhook` sin desplegar en DEV y `wa-embedded-signup-exchange` sin desplegar en PROD (de siempre).
+> **⚠️ Recordatorios operativos:** `SUPABASE_ACCESS_TOKEN` renovado el 08/10 por 90 días (vence ~06/01/2027): cambiarlo en
+> `.env.local` **y** en el secret de GitHub (si no, falla el backup diario de Storage). En modo automático Claude Code rechaza los
+> deploys a PROD: GO sale con Shift+Tab. Abiertos de siempre: gastos sueltos pagados con cheque no guardan movimiento de caja;
+> `marketplace-webhook` sin desplegar en DEV y `wa-embedded-signup-exchange` sin desplegar en PROD.
 >
 > ### 🛑 ARRANCÁ ACÁ (2026-10-07, cierre) — 🚀 **PROD = DEV = `v1.240.2`** (migs 001-476, sin migraciones nuevas) · PRs #378, #379 y el de v1.240.2
 >

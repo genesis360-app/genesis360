@@ -3,10 +3,12 @@ title: WMS — Almacenaje Dirigido y Picking
 category: features
 tags: [wms, lpn, kits, picking, almacenaje, ubicaciones, zonas, reabastecimiento, pedidos]
 sources: [CLAUDE.md, ROADMAP.md, migrations 289, 290, 291, 292, 334, 335, 355, 356, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx]
-updated: 2026-08-11
+updated: 2026-10-09
 ---
 
 # WMS — Warehouse Management System
+
+> 🎨 **2026-10-09 (✅ EN PROD v1.241.0, UAT §113) — Picking unificado.** La página Picking tiene dos pestañas: **"Tareas"** (ex Pedidos → Tareas WMS, mudada en v1.161.0; ahora `src/components/wms/TareasWmsPanel.tsx`: vista por pedido —colapsada por defecto, abierta si viene con filtro— o por tarea, selección por tarea y por pedido, asignar/completar/cancelar en masa, buscador `src/lib/wmsTareasFiltro.ts`) y **"Picking"** (vista del operario). Pedidos ya no tiene la tab Tareas WMS; "Ver en Picking" abre `/picking?busqueda=Pedido:N` con ambas filtradas. Las menciones a "Tareas WMS dentro de Pedidos" más abajo son históricas. Mig 484: el envío entregado confirma pickings pendientes y cancela reabastecimientos. Ver [[wiki/features/pedidos]].
 
 > 📦 **2026-10-03 — Para después (GO):** WMS profesional con priorización de tareas de preparación y asignación automática a usuarios con permiso para ese tipo de tarea y vehículo. Hoy (✅ EN PROD v1.238.0, mig 465): Pedidos y Picking ordenan por fecha de entrega y marcan atrasado/hoy/mañana. Ver [[wiki/features/pedidos]].
 

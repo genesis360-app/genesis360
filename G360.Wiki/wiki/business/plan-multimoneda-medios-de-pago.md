@@ -30,7 +30,7 @@ para N monedas pero **visible solo ARS (principal) + USD (secundaria)**.
 - Lo mismo en devoluciones/anulaciones (reintegro en USD), señas, pagos de OC (`registrar_pago_oc` mira la moneda del medio y
   pide cotización si difiere de la OC) y gastos.
 - `cuentas_origen` (Caja Fuerte) también tienen moneda propia; `vw_boveda_cuentas` suma por cuenta.
-- Config → Métodos de pago muestra un **cartel + botón "Crear 'Efectivo USD'"** (v1.240.5, en `dev`) cuando hay productos en USD
+- Config → Métodos de pago muestra un **cartel + botón "Crear 'Efectivo USD'"** (✅ EN PROD v1.241.0) cuando hay productos en USD
   y no existe ese medio. **Ese cartel y el botón se eliminan en la Fase 1.**
 - Dependen de "Efectivo USD" los e2e **140** (pago de OC en USD), **149** (anulación con reintegro USD) y **157** (seña mixta).
 

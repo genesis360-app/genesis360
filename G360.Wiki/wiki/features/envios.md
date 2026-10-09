@@ -8,9 +8,11 @@ updated: 2026-10-08
 
 # Módulo Envíos
 
-> 🐛 **2026-10-08 (🟡 DEV, commit `d5b43d72`):** `courier-api` pedía `clientes.documento` (no existe; los campos son `dni` /
+> 📦 **2026-10-09 (✅ EN PROD v1.241.0, mig 484):** un envío entregado confirma los pickings pendientes del pedido y cancela sus reabastecimientos; Ventas → Retiro filtra por sucursal activa. Ver [[wiki/features/pedidos]].
+
+> 🐛 **2026-10-08 (✅ EN PROD v1.241.0, commit `d5b43d72`):** `courier-api` pedía `clientes.documento` (no existe; los campos son `dni` /
 > `cuit_receptor`) → la **etiqueta del courier salía con destinatario "Cliente" y sin datos**. Corregido y desplegado en DEV; hay 6
-> envíos por courier en PROD → desplegar `courier-api` a PROD con v1.240.5. Ver [[wiki/architecture/edge-functions]].
+> envíos por courier en PROD (`courier-api` desplegada en PROD con v1.241.0). Ver [[wiki/architecture/edge-functions]].
 
 > 📅 **2026-10-03 (✅ EN PROD v1.238.0, mig 465):** la fecha de entrega del envío la hereda el pedido (ordena Pedidos y Picking). En el POS el campo se llama "Fecha de entrega" (sin "acordada"), misma altura que "Rango horario"; en panel angosto bajan de línea. Decisión de GO: el costo de envío SE COBRA (entra en la deuda de CC; QR Fase 1, sin empezar).
 

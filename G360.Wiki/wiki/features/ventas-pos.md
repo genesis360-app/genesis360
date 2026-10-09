@@ -8,7 +8,9 @@ updated: 2026-10-08
 
 # Ventas / POS
 
-> 🛑 **2026-10-08 (🟡 DEV, va en v1.240.5) — El carrito toma el stock de la sucursal activa.** `agregarProducto` traía los LPN
+> 📦 **2026-10-09 (✅ EN PROD v1.241.0, mig 486):** una venta despachada/facturada genera su pedido ya `listo_para_entrega`, y si la venta reservada pasa a despachada su pedido confirmado pasa a listo (trigger `trg_ventas_despachada_pedido_listo`). Ventas → Retiro filtra por sucursal activa. Ver [[wiki/features/pedidos]].
+
+> 🛑 **2026-10-08 (✅ EN PROD v1.241.0) — El carrito toma el stock de la sucursal activa.** `agregarProducto` traía los LPN
 > del producto de todas las sucursales (de ahí salen el LPN del carrito y el tope de cantidad); el registro de la venta siempre
 > filtró, así que nunca se descontó stock ajeno. Mig 482: vencimiento con año de 4 dígitos. e2e 190, UAT §110.
 

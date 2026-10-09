@@ -6,7 +6,7 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-10-03
 ---
 
-# Historial de Migraciones (001-493, + correctivos 387b/387c)
+# Historial de Migraciones (001-494, + correctivos 387b/387c)
 
 📦 **Migración 475 — ✅ EN DEV Y PROD (2026-10-06, v1.239.0)**: envío de la OC. La OC dice quién lo cobra: el proveedor (default; suma al total, al pago y a la deuda, cargo `es_envio` de la CC al recibir) o un tercero (gasto "Fletes" aparte, no suma). Una vez por OC. Editar una OC ahora guarda el envío. Consulta al contador C-22 (ver [[wiki/business/consultas-contador]]). Ver [[wiki/features/gastos]].
 
@@ -3315,3 +3315,4 @@ Ver patrón completo y explicación en [[wiki/development/convenciones-codigo#gr
 | 491 | `491_correcciones_picking_globales.sql` | Entrega en A: movimiento de stock con la sucursal dueña del LPN y correcciones de revisión. Ver [[wiki/features/wms]] | 🟡 SOLO DEV (v1.242.0) |
 | 492 | `492_pedido_entregado_no_se_cancela.sql` | Un pedido entregado no se cancela (ni entregado parcial) | 🟡 SOLO DEV (v1.242.0) |
 | 493 | `493_unpick_solo_pedido_vivo.sql` | No se des-pickea un pedido entregado ni el de una venta ya despachada. Ver [[wiki/features/pedidos]] | 🟡 SOLO DEV (v1.242.0) |
+| 494 | `494_revoke_mover_anotacion_reserva.sql` | `fn_venta_reservas_mover_anotacion` sin EXECUTE para authenticated (DEFINER sin control de tenant; hallazgo del code-review de v1.242.0). Ver [[wiki/features/inventario-stock]] | 🟡 SOLO DEV (v1.242.0) |

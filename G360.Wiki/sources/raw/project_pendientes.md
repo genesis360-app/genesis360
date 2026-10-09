@@ -6,14 +6,14 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-10-09, cierre) — 🟡 **DEV adelante de PROD: `v1.242.0` LISTA EN DEV, sin deploy** (migs 487-493 solo DEV)
+> ### 🛑 ARRANCÁ ACÁ (2026-10-09, cierre) — 🟡 **DEV adelante de PROD: `v1.242.0` LISTA EN DEV, sin deploy** (migs 487-494 solo DEV)
 >
 > | | Código | Migraciones |
 > |---|---|---|
 > | **PROD** | `v1.241.0` (PR #383, merge `8873c36b`, release Latest) | 001-**486** |
-> | **DEV** | `v1.242.0` (`origin/dev`, commits `33443dec..57fb426f`) | 001-**493** (487-493 SOLO DEV) |
+> | **DEV** | `v1.242.0` (`origin/dev`, commits `33443dec..57fb426f`) | 001-**494** (487-494 SOLO DEV) |
 >
-> **Falta:** autorización de GO para el deploy. Al deployar: migs 487-493 a PROD de a una con `scripts/aplicar-migracion.mjs`
+> **Falta:** autorización de GO para el deploy. Al deployar: migs 487-494 a PROD de a una con `scripts/aplicar-migracion.mjs`
 > (🛑 **488 NO es aditiva-segura**: va en el mismo release que su front; su backfill agrega filas en las 7 reservas vivas de PROD,
 > no toca LPN → avisar a GO), PR `dev → main` `v1.242.0 — ...`, release `v1.242.0` (tag y release NO creados aún),
 > `auditar-edge-functions.sh`, hash de `pg_policies` por schema.
